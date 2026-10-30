@@ -163,7 +163,16 @@ function renderSide(){
   for(const q of order){const d=q.split("/").length-1;const b=navBtn(q.split("/").pop(),cnt.get(q)||0,st.folder===q,()=>setFolder(q));b.style.paddingLeft=(8+d*16)+"px";f.append(b)}
   const tg=$("tags");tg.replaceChildren();
   const tagAll=[...new Set(live.flatMap(i=>i.tags))].sort((a,b)=>a.localeCompare(b,"ja"));
-  for(const t of tagAll)tg.append(navBtn("# "+t,live.filter(i=>i.tags.includes(t)).length,st.tag===t,()=>setTag(t)));
+  for(const t of tagAll){const b=navBtn("# "+t,live.filter(i=>i.tags.includes(t)).length,st.tag===t,()=>setTag(t));b.oncontextmenu=e=>{e.preventDefault();editTag(t)};b.ondblclick=()=>editTag(t);tg.append(b)}
+}
+// Rename (merging into an existing tag of the same name) or delete a tag on every item.
+function editTag(t){
+  formDlg("タグを編集",`<input id="fTag" required><button type="button" class="btn" id="fDel">削除</button>`,"保存",()=>{
+    const n=$("fTag").value.trim();if(!n||n===t)return;
+    items.forEach(i=>{if(i.tags.includes(t))i.tags=[...new Set(i.tags.map(z=>z===t?n:z))]});
+    if(st.tag===t)st.tag=n;TAGS.splice(0,TAGS.length,...new Set(TAGS.map(z=>z===t?n:z)));save();render();toast(`「${n}」に変更しました`)},
+  ()=>{$("fTag").value=t;$("fDel").onclick=()=>{const n=items.filter(i=>i.tags.includes(t)).length;
+    confirmDlg(`「${t}」を削除`,`${n} 件から外します。`,()=>{items.forEach(i=>{if(i.tags.includes(t))i.tags=i.tags.filter(z=>z!==t)});if(st.tag===t)st.tag=null;save();render();toast(`「${t}」を削除しました`)})}});
 }
 function setView(v){st.view=v;st.folder=null;st.tag=null;st.sel.clear();render()}
 function setFolder(f){st.view="all";st.folder=st.folder===f?null:f;st.sel.clear();render()}
@@ -252,7 +261,10 @@ function trashSel(){
 }
 $("bTrash").onclick=trashSel;
 $("bRestore").onclick=()=>{const s=selItems();s.forEach(i=>i.trashed=false);st.sel.clear();save();render();toast(`${s.length} 件を元に戻しました`)};
-$("bTag").onclick=()=>formDlg("タグを追加",`<input id="fTag" list="tagList" placeholder="タグ名" required><datalist id="tagList">${TAGS.map(t=>`<option value="${esc(t)}">`).join("")}</datalist>`,"追加",()=>{const t=$("fTag").value.trim();if(!t)return;selItems().forEach(i=>{if(!i.tags.includes(t))i.tags.push(t)});save();render();toast(`「${t}」を追加しました`)});
+$("bTag").onclick=()=>{const s=selItems();const cur=[...new Set(s.flatMap(i=>i.tags))].sort((a,b)=>a.localeCompare(b,"ja"));
+  formDlg("タグ",`<input id="fTag" list="tagList" placeholder="タグ名"><datalist id="tagList">${TAGS.map(t=>`<option value="${esc(t)}">`).join("")}</datalist><div class="tags" id="fCur"></div>`,"追加",()=>{const t=$("fTag").value.trim();if(!t)return;s.forEach(i=>{if(!i.tags.includes(t))i.tags.push(t)});save();render();toast(`「${t}」を追加しました`)},
+  ()=>{for(const t of cur){const c=document.createElement("span");c.className="tag";c.textContent="# "+t;const x=document.createElement("button");x.type="button";x.textContent="✕";x.setAttribute("aria-label","タグを外す");
+    x.onclick=()=>{s.forEach(i=>i.tags=i.tags.filter(z=>z!==t));c.remove();save();render()};c.append(x);$("fCur").append(c)}})};
 $("bMove").onclick=()=>formDlg("移動",`<select id="fFolder">${folderOpts()}</select>`,"移動",()=>{const f=$("fFolder").value;const s=selItems();s.forEach(i=>i.folder=f);st.sel.clear();save();render();toast(`${s.length} 件を ${f} へ移動しました`)});
 $("addBtn").onclick=()=>formDlg("追加",`<select id="fKind"><option value="file">ファイル（画像・動画・テキスト）</option><option value="url">URL</option>${EAGLE?`<option value="eagle">Eagleライブラリ（.library フォルダ）</option>`:""}</select><input id="fUrl" type="url" placeholder="https://" hidden><select id="fFolder">${folderOpts(st.folder)}</select>`,"追加",()=>{
   const f=$("fFolder").value;
