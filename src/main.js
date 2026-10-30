@@ -285,6 +285,17 @@ function setCols(n){const g=$("grid");n=n&&Math.max(1,Math.min(12,n));if(n)g.sty
 $("size").oninput=e=>setCols(+e.target.value);
 try{const n=+localStorage.getItem("tehon-cols");setCols(n||null)}catch(e){setCols(null)}
 addEventListener("resize",()=>{if(!$("grid").classList.contains("cols"))$("size").value=curCols()});
+// Pinch on the list changes the column count: spreading fingers means fewer, larger thumbnails.
+{let acc=0,base=0;const wrap=$("wrap");
+  const pinchCols=f=>setCols(Math.round(base/f));
+  wrap.addEventListener("wheel",e=>{if(!e.ctrlKey)return;e.preventDefault();acc+=e.deltaY;if(Math.abs(acc)>=40){setCols(curCols()+Math.sign(acc));acc=0}},{passive:false});
+  let d0=0;const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+  wrap.addEventListener("touchstart",e=>{if(e.touches.length===2){d0=dist(e.touches);base=curCols()}},{passive:true});
+  wrap.addEventListener("touchmove",e=>{if(e.touches.length!==2||!d0)return;e.preventDefault();pinchCols(dist(e.touches)/d0)},{passive:false});
+  wrap.addEventListener("touchend",e=>{if(e.touches.length<2)d0=0});
+  // Safari sends gesture events for trackpad and touch pinches.
+  wrap.addEventListener("gesturestart",e=>{e.preventDefault();base=curCols()});
+  wrap.addEventListener("gesturechange",e=>{e.preventDefault();if(!d0)pinchCols(e.scale)});}
 $("selBtn").onclick=()=>{st.selecting=!st.selecting;if(!st.selecting)st.sel.clear();renderGrid();renderSel()};
 $("bAll").onclick=()=>{list.forEach(i=>st.sel.add(i.id));renderGrid();renderSel()};
 $("bNone").onclick=()=>{st.sel.clear();st.selecting=false;renderGrid();renderSel()};
@@ -480,7 +491,9 @@ $("vFav").onclick=()=>{const it=list[V.i];it.favorite=!it.favorite;save();$("vFa
 $("vPlay").onclick=()=>{V.play=!V.play;$("vPlay").textContent=V.play?"❚❚":"▶";if(V.video)V.play?V.video.play():V.video.pause()};
 const stage=$("stage");const pts=new Map();let pinch=null;
 const rel=e=>{const r=stage.getBoundingClientRect();return[e.clientX-r.left-r.width/2,e.clientY-r.top-r.height/2]};
-stage.addEventListener("wheel",e=>{if(e.target===vt)return;e.preventDefault();const [x,y]=rel(e);zoomAt(Math.exp(-e.deltaY*.0015),x,y)},{passive:false});
+stage.addEventListener("wheel",e=>{if(e.target===vt)return;e.preventDefault();const [x,y]=rel(e);zoomAt(Math.exp(-e.deltaY*(e.ctrlKey?.01:.0015)),x,y)},{passive:false});
+let gs=1;stage.addEventListener("gesturestart",e=>{e.preventDefault();gs=1});
+stage.addEventListener("gesturechange",e=>{e.preventDefault();if(pts.size>1)return;const [x,y]=rel(e);zoomAt(e.scale/gs,x,y);gs=e.scale});
 stage.addEventListener("pointerdown",e=>{if(e.target===vt)return;stage.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);if(pts.size===2){const [a,b]=[...pts.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])}}});
 stage.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;const p=pts.get(e.pointerId);
   if(pts.size===2&&pinch){pts.set(e.pointerId,[e.clientX,e.clientY]);const [a,b]=[...pts.values()];const d=Math.hypot(a[0]-b[0],a[1]-b[1]);const r=stage.getBoundingClientRect();zoomAt(d/pinch.d,(a[0]+b[0])/2-r.left-r.width/2,(a[1]+b[1])/2-r.top-r.height/2);pinch.d=d;return}
