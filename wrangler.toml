@@ -1,3 +1,10 @@
-name = "tehon-preview"
-pages_build_output_dir = "dist"
+# Cloudflare Workers (static assets). The name must match the Worker connected to this repo.
+name = "tehon"
 compatibility_date = "2026-10-01"
+
+[build]
+command = "npm run build"
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"

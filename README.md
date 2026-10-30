@@ -27,7 +27,7 @@ Eagle ライブラリ読み込み（テスト用）は `npm run dev` では常�
    - `files.content.write`
 4. **Settings** タブ
    - **OAuth 2 › Redirect URIs** に次の2つを追加（末尾の `/` まで完全一致が必要）
-     - `https://tehon-preview.pages.dev/`
+     - `https://tehon.<アカウントのサブドメイン>.workers.dev/`（Cloudflare の公開 URL）
      - `http://localhost:5173/`
    - **Allow public clients (Implicit Grant & PKCE)** が `Allow` になっていることを確認
    - **App key** を控える（App secret は使いません）
@@ -36,22 +36,15 @@ Eagle ライブラリ読み込み（テスト用）は `npm run dev` では常�
 
 開発中のアプリは登録者本人のアカウントでそのまま使えます。他の人にも使ってもらう場合は **Development users** の上限（**Enable additional users** で500人まで）か、本番申請が必要です。
 
-## Cloudflare Pages（tehon-preview）
+## Cloudflare Workers（tehon）
 
-Git 連携で自動デプロイします。
+リポジトリに接続した Worker `tehon` が、push ごとに `npx wrangler deploy` で静的サイトとして公開します（設定は `wrangler.toml`。ビルドは `npm run build` が自動で走ります）。
 
-1. Cloudflare ダッシュボード → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
-2. リポジトリ `pikoponpoko/tehon` を選び、プロジェクト名を `tehon-preview` にする
-3. ビルド設定
-   - Framework preset: `None`
-   - Build command: `npm run build`
-   - Build output directory: `dist`
-   - Production branch: `main`
-4. **Environment variables** に `VITE_DROPBOX_APP_KEY` = App key（Production と Preview の両方）。Eagle 読み込みを試す場合は `VITE_EAGLE_IMPORT` = `1`
-5. **Save and Deploy**
+1. Cloudflare ダッシュボード → **Workers & Pages** → `tehon` → **Settings** → **Build** → **Variables and secrets** に `VITE_DROPBOX_APP_KEY` = App key を追加。Eagle 読み込みを試す場合は `VITE_EAGLE_IMPORT` = `1`
+2. 公開 URL（`https://tehon.<アカウントのサブドメイン>.workers.dev/`）を Dropbox の Redirect URIs にも追加
 
-公開 URL は `https://tehon-preview.pages.dev/`。ブランチごとのプレビュー URL（`https://<ブランチ>.tehon-preview.pages.dev/`）でも画面は確認できますが、Dropbox 接続は Redirect URI に登録した URL でのみ動きます。
+ブランチごとのプレビュー URL でも画面は確認できますが、Dropbox 接続は Redirect URI に登録した URL でのみ動きます。
 
-手元からデプロイする場合は `npx wrangler login` のあと `VITE_DROPBOX_APP_KEY=... npm run deploy`。
+手元からデプロイする場合は `npx wrangler login` のあと `VITE_DROPBOX_APP_KEY=... npx wrangler deploy`。
 
 セキュリティヘッダー（CSP など）は `public/_headers` にあります。
