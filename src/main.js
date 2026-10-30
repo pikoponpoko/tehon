@@ -76,7 +76,7 @@ function thumb(it){
 
 
 /* Dropbox */
-// Thumbnails are asked for when a card comes near the screen; saved ones come from IndexedDB, the rest in small parallel batches.
+// Thumbnails are asked for in screen order (see lazy); saved ones come from IndexedDB, the rest in small parallel batches.
 const thumbQ=[],thumbAsked=new Set();let thumbBusy=0,thumbT;
 function queueThumb(it,fresh=false){if(thumbAsked.has(it.id))return;thumbAsked.add(it.id);thumbQ.push({id:it.id,rev:it.rev,fresh});clearTimeout(thumbT);thumbT=setTimeout(pumpThumbs,16)}
 function setThumb(id,b){const u=b?URL.createObjectURL(b):BLANK;thumbCache.set(id,u);if(b)document.querySelectorAll(`img[data-id="${CSS.escape(id)}"]`).forEach(im=>im.src=u)}
@@ -90,10 +90,15 @@ function pumpThumbs(){
       if(again.length)setTimeout(()=>{thumbQ.push(...again);pumpThumbs()},3000*again[0].tries)}).finally(()=>{thumbBusy--;pumpThumbs()});
   }
 }
-let thumbIO;
-// Nearest the top of the screen first: in the waterfall, page order runs down each column, not across the screen.
-function thumbObs(){return thumbIO||=new IntersectionObserver(es=>{
-  for(const e of es.filter(e=>e.isIntersecting).sort((a,b)=>Math.max(0,a.boundingClientRect.top)-Math.max(0,b.boundingClientRect.top))){const el=e.target;thumbIO.unobserve(el);el._tx?textPreview(el._tx).then(el._put):queueThumb(el._th)}},{root:$("wrap"),rootMargin:"1200px"})}
+// Every card of a chunk is asked for, nearest the top of the screen first. Not an IntersectionObserver: Safari misplaces
+// elements in the waterfall's later columns, so their cards were never loaded.
+let lazyEls=[],lazyRaf=0;
+function lazy(el){lazyEls.push(el);lazyRaf||=requestAnimationFrame(flushLazy)}
+function flushLazy(){lazyRaf=0;
+  const els=lazyEls.filter(el=>el.isConnected).map(el=>{const r=el.getBoundingClientRect();return [el,Math.max(0,r.top),r.left]});lazyEls=[];
+  els.sort((a,b)=>a[1]-b[1]||a[2]-b[2]);
+  for(const [el] of els)el._tx?textPreview(el._tx).then(el._put):queueThumb(el._th);
+}
 /* URL: preview image (og:image) via /api/ogp, shrunk to JPEG and kept in /.tehon/ogp so it survives the page changing */
 const OGP_DIR=dbx.META_DIR+"/ogp";let ogpFiles=new Map(),ogpBusy=0;const ogpQ=[];
 const urlHash=s=>{let a=0x811c9dc5,b=0x9747b28c;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);a=Math.imul(a^c,16777619);b=Math.imul(b^c,2246822507)}return (a>>>0).toString(16).padStart(8,"0")+(b>>>0).toString(16).padStart(8,"0")};
@@ -244,7 +249,7 @@ function setFolder(f){st.view="all";st.folder=st.folder===f?null:f;st.sel.clear(
 function setTag(t){if(st.view==="trash")st.view="all";st.tag=st.tag===t?null:t;st.sel.clear();render()}
 function renderGrid(){
   list=filtered();
-  const g=$("grid");liveIO?.disconnect();thumbIO?.disconnect();g.querySelectorAll("video").forEach(v=>{v.pause();v.removeAttribute("src");v.load()});g.replaceChildren();
+  const g=$("grid");liveIO?.disconnect();lazyEls=[];g.querySelectorAll("video").forEach(v=>{v.pause();v.removeAttribute("src");v.load()});g.replaceChildren();
   g.classList.toggle("selecting",st.selecting||st.sel.size>0);
   if(!list.length){
     if(!items.length&&st.view!=="trash"){
@@ -259,12 +264,12 @@ function appendCards(start){
   const frag=document.createDocumentFragment();
   list.slice(start,start+CHUNK).forEach((it,j)=>{const idx=start+j;
     const c=document.createElement("div");c.className="card"+(it.kind==="text"||it.kind==="url"?"":" media")+(st.sel.has(it.id)?" sel":"");c.tabIndex=0;c.dataset.i=idx;
-    if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";const put=t=>{d.textContent=t.slice(0,400);d.style.fontSize=txtSize(t)+"px"};if(it.text!=null)put(it.text);else d.textContent="…";c.append(d);if(it.text==null&&!(it.dbx&&it.size>2e5)){if(it.dbx){d._tx=it;d._put=put;thumbObs().observe(d)}else readText(it).then(put)}}
+    if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";const put=t=>{d.textContent=t.slice(0,400);d.style.fontSize=txtSize(t)+"px"};if(it.text!=null)put(it.text);else d.textContent="…";c.append(d);if(it.text==null&&!(it.dbx&&it.size>2e5)){if(it.dbx){d._tx=it;d._put=put;lazy(d)}else readText(it).then(put)}}
     else if(it.kind==="url")urlCard(c,it);
     else if(it.kind==="video"&&(it.file||it.dbx)){const v=document.createElement("video");v.className="th";v.muted=true;v.loop=true;v.playsInline=true;v.preload="none";
       if(it.thumbFile)v.poster=it.blobUrl;v._it=it;c.append(v);liveObs().observe(v)}
     else{const im=document.createElement("img");im.className="th";im.loading="lazy";im.decoding="async";im.alt="";if(it.dbx)im.dataset.id=it.id;im.src=it.kind==="gif"&&it.file?(it.srcUrl||=URL.createObjectURL(it.file)):thumb(it);
-      if(it.dbx&&it.thumbable&&!thumbCache.has(it.id)){im._th=it;thumbObs().observe(im)}
+      if(it.dbx&&it.thumbable&&!thumbCache.has(it.id)){im._th=it;lazy(im)}
       // An image that fails to load collapses to nothing, which hides the card: show the blank and fetch it again from Dropbox.
       if(it.dbx)im.onerror=()=>{if(!im.src.startsWith("blob:"))return;im.src=BLANK;if(!it.thumbable)return;thumbCache.delete(it.id);thumbAsked.delete(it.id);queueThumb(it,true)}
       if(it.kind==="gif"&&it.dbx){im._it=it;liveObs().observe(im)}c.append(im)}
@@ -465,7 +470,7 @@ $("setBtn").onclick=()=>{closeNav();
     $("fKeys").onclick=keysDlg;const b=$("fDbx");if(b)b.onclick=async()=>{if(!dbxMode)return dbx.startAuth();flushSave();await dbx.disconnect();try{localStorage.removeItem(CACHE)}catch(e){}location.reload()}})};
 const TEXT=["txt","md","text","csv","json"];
 // Card text for Dropbox files: the first 400 characters, kept in IndexedDB until the file changes.
-// Downloads run 10 at a time, in the order cards come near the screen, so they don't all wait on each other.
+// Downloads run 10 at a time, in the order the cards were asked for (see lazy), so the ones on screen come first.
 const previewP=new Map(),textQ=[];let textBusy=0;
 function textSlot(fn){return new Promise(res=>{textQ.push(()=>fn().then(res));pumpText()})}
 function pumpText(){while(textQ.length&&textBusy<10){textBusy++;textQ.shift()().finally(()=>{textBusy--;pumpText()})}}
