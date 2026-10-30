@@ -236,7 +236,7 @@ $("grid").addEventListener("click",e=>{
 });
 let hov;$("grid").addEventListener("pointerover",e=>{const c=e.target.closest(".card");clearTimeout(hov);if(c&&e.pointerType==="mouse")hov=setTimeout(()=>prefetch(list[+c.dataset.i]),120)});
 // pinching / pinchEnd: a pinch on the list must not turn into a long-press or a tap.
-let lp,lp0,pinching=false,pinchEnd=0;$("grid").addEventListener("pointerdown",e=>{const c=e.target.closest(".card");if(!c||e.pointerType==="mouse")return;clearTimeout(lp);if(pinching||!e.isPrimary)return;lp0=[e.clientX,e.clientY];lp=setTimeout(()=>{if(pinching)return;st.selecting=true;st.sel.add(list[+c.dataset.i].id);renderGrid();renderSel();lp="done"},450)});
+let lp,lp0,pinching=false,pinchEnd=0;$("grid").addEventListener("pointerdown",e=>{const c=e.target.closest(".card");if(!c||e.pointerType==="mouse"||e.target.closest(".fv"))return;clearTimeout(lp);if(pinching||!e.isPrimary)return;lp0=[e.clientX,e.clientY];lp=setTimeout(()=>{if(pinching)return;st.selecting=true;st.sel.add(list[+c.dataset.i].id);renderGrid();renderSel();lp="done"},450)});
 ["pointerup","pointercancel","pointermove"].forEach(ev=>$("grid").addEventListener(ev,e=>{if(ev==="pointermove"&&lp0&&Math.hypot(e.clientX-lp0[0],e.clientY-lp0[1])<8)return;if(lp!=="done")clearTimeout(lp)}));
 $("grid").addEventListener("click",e=>{if(lp==="done"||pinching||Date.now()-pinchEnd<500){lp=null;e.stopImmediatePropagation()}},true);
 /* keyboard */
