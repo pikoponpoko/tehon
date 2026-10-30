@@ -216,7 +216,7 @@ function render(){renderSide();renderGrid();renderSel()}
 /* grid events */
 $("grid").addEventListener("click",e=>{
   const c=e.target.closest(".card");if(!c)return;const it=list[+c.dataset.i];
-  if(e.target.closest(".fv")){it.favorite=!it.favorite;save();render();return}
+  if(e.target.closest(".fv")){it.favorite=!it.favorite;save();if(st.view==="fav")render();else{e.target.closest(".fv").classList.toggle("on",it.favorite);renderSide()}return}
   if(e.shiftKey&&st.anchor!=null){const a=Math.min(st.anchor,+c.dataset.i),b=Math.max(st.anchor,+c.dataset.i);for(let i=a;i<=b;i++)st.sel.add(list[i].id);renderGrid();renderSel();return}
   if(e.metaKey||e.ctrlKey||st.selecting||st.sel.size||e.target.closest(".chk")){st.sel.has(it.id)?st.sel.delete(it.id):st.sel.add(it.id);st.anchor=+c.dataset.i;renderGrid();renderSel();return}
   st.anchor=+c.dataset.i;openViewer(+c.dataset.i);
@@ -268,7 +268,8 @@ document.addEventListener("keydown",e=>{
   if(k===" "&&i!=null){e.preventDefault();const id=list[i].id;st.sel.has(id)?st.sel.delete(id):st.sel.add(id);st.anchor=i;renderGrid();renderSel();focusCard(i);return}
   if(k==="Delete"||k==="Backspace"){if(useFocus()){e.preventDefault();trashSel();if(!tr){st.imp=false;if(i!=null)focusCard(i)}}return}
   if(tr)return;
-  if(k==="f"&&useFocus()){$("bFav").click();if(st.imp)dropImp();else if(i!=null)focusCard(i);return}
+  if(k==="f"&&!st.sel.size&&i!=null){const it=list[i];it.favorite=!it.favorite;save();if(st.view==="fav"){render();focusCard(i)}else{cardAt(i)?.querySelector(".fv")?.classList.toggle("on",it.favorite);renderSide()}return}
+  if(k==="f"&&useFocus()){$("bFav").click();if(i!=null)focusCard(i);return}
   if(k==="t"&&useFocus()){e.preventDefault();$("bTag").click();return}
   if(k==="m"&&!dbxMode&&useFocus()){$("bMove").click();return}
 });
