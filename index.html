@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tehon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<div class="app" id="app">
+  <aside id="side" class="sb">
+    <div class="brand">Tehon <span class="sync" id="sync"><i></i>デモデータ</span></div>
+    <div class="sec"><div class="nav" id="lib"></div></div>
+    <div class="sec"><h3>フォルダ</h3><div class="nav" id="folders"></div></div>
+    <div class="sec"><h3>タグ</h3><div class="nav" id="tags"></div></div>
+    <div class="nav setbtn"><button id="setBtn"><span>設定</span></button></div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+  <main>
+    <div class="bar">
+      <button class="btn ic menu" id="menuBtn" aria-label="メニュー">☰</button>
+      <label class="search"><span aria-hidden="true">⌕</span><input id="q" type="search" placeholder="検索" autocomplete="off"></label>
+      <select class="btn" id="sort" aria-label="並べ替え">
+        <option value="added-desc">追加日（新しい順）</option>
+        <option value="added-asc">追加日（古い順）</option>
+        <option value="name-asc">名前</option>
+        <option value="kind">種類</option>
+        <option value="random">ランダム</option>
+      </select>
+      <button class="btn" id="shuffle" hidden>シャッフル</button>
+      <span class="seg" role="group" aria-label="レイアウト"><button id="lGrid" class="on" aria-label="グリッド" title="グリッド"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg></button><button id="lFall" aria-label="ウォーターフォール" title="ウォーターフォール"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="8" rx="1"/><rect x="9" y="1" width="6" height="5" rx="1"/><rect x="1" y="11" width="6" height="4" rx="1"/><rect x="9" y="8" width="6" height="7" rx="1"/></svg></button></span>
+      <input class="size" id="size" type="range" min="110" max="300" value="170" aria-label="サムネイルサイズ">
+      <button class="btn" id="selBtn">選択</button>
+      <button class="btn pri" id="addBtn">＋ 追加</button>
+      <input type="file" id="file" accept="image/*,video/*,.txt,.md,text/plain" multiple hidden>
+      <input type="file" id="eagleDir" webkitdirectory multiple hidden>
+    </div>
+    <div class="selbar" id="selbar" hidden>
+      <span><b id="selN">0</b> 件選択</span>
+      <button class="btn" id="bFav"><svg class="hi" viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> お気に入り</button>
+      <button class="btn" id="bTag">タグを追加</button>
+      <button class="btn" id="bMove">移動</button>
+      <button class="btn" id="bTrash">ゴミ箱へ</button>
+      <button class="btn" id="bRestore" hidden>元に戻す</button>
+      <button class="btn" id="bAll">すべて選択</button>
+      <button class="btn" id="bNone">解除</button>
+    </div>
+    <div class="grid-wrap sb" id="wrap"><div class="grid" id="grid"></div></div>
+  </main>
+</div>
+
+<div class="viewer" id="viewer" hidden>
+  <div class="vbar">
+    <button class="vbtn" id="vClose" aria-label="閉じる">✕</button>
+    <span class="t" id="vTitle"></span><span class="vstate" id="vState"></span>
+    <button class="vbtn" id="vOut" aria-label="縮小">−</button>
+    <button class="vbtn" id="vFit" aria-label="全体表示"><span id="vZoom">100%</span></button>
+    <button class="vbtn" id="vIn" aria-label="拡大">＋</button>
+    <span class="swatches" role="group" aria-label="背景"><button class="swatch sw-dark" data-bg="dark" aria-label="黒" title="黒"></button><button class="swatch sw-blur" data-bg="blur" aria-label="透明ぼかし" title="透明ぼかし"></button><button class="swatch sw-light" data-bg="light" aria-label="ライトグレー" title="ライトグレー"></button></span>
+    <button class="vbtn" id="vPlay" hidden>❚❚</button>
+    <button class="vbtn" id="vFav" aria-label="お気に入り"><svg class="hi" viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></button>
+    <button class="vbtn" id="vPrev" aria-label="前へ">‹</button>
+    <button class="vbtn" id="vNext" aria-label="次へ">›</button>
+  </div>
+  <div class="stage" id="stage"><canvas id="vc"></canvas><img id="vi" alt="" draggable="false" hidden><video id="vv" muted loop playsinline hidden></video><textarea id="vt" spellcheck="false" aria-label="テキスト" hidden></textarea></div>
+  <div class="vfoot" id="vfoot"></div>
+</div>
+
+<div class="dlg" id="dlg" hidden><form id="dlgForm"></form></div>
+<div class="toast" id="toast" hidden></div>
+<div class="drop" id="drop" hidden></div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
