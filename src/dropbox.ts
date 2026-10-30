@@ -327,3 +327,52 @@ export async function saveDevice(d: DeviceFile) {
     body: JSON.stringify(d),
   });
 }
+
+/* ---------- used by the Eagle importer ---------- */
+/** Every entry under `path` (recursive), including Tehon's own folders. */
+export async function listTree(path: string): Promise<FileMeta[]> {
+  const out: FileMeta[] = [];
+  let r = await rpc("files/list_folder", { path, recursive: true, limit: 2000 });
+  for (;;) {
+    out.push(...r.entries);
+    if (!r.has_more) return out;
+    r = await rpc("files/list_folder/continue", { cursor: r.cursor });
+  }
+}
+
+export async function readJson<T = any>(path: string): Promise<T> {
+  return JSON.parse(await (await download(path)).blob.text());
+}
+
+// Batch calls may answer with a job id; poll `check` until the job finishes.
+async function batch(path: string, check: string, arg: unknown): Promise<any> {
+  let r = await rpc(path, arg);
+  const job = r.async_job_id;
+  while (r[".tag"] === "async_job_id" || r[".tag"] === "in_progress") {
+    await sleep(1500);
+    r = await rpc(check, { async_job_id: job });
+  }
+  if (r[".tag"] !== "complete") throw new DropboxError(409, JSON.stringify(r));
+  return r;
+}
+
+/** Moves (autorename on clash). Returns one result per entry, in order: the moved file, or null on failure. */
+export async function moveBatch(entries: { from_path: string; to_path: string }[]): Promise<(FileMeta | null)[]> {
+  const out: (FileMeta | null)[] = [];
+  for (let i = 0; i < entries.length; i += 1000) {
+    const r = await batch("files/move_batch_v2", "files/move_batch/check_v2", { entries: entries.slice(i, i + 1000), autorename: true });
+    out.push(...r.entries.map((e: any) => (e[".tag"] === "success" ? e.success : null)));
+  }
+  return out;
+}
+
+/** Creates folders; ones that already exist are left as they are. */
+export async function createFolders(paths: string[]) {
+  for (let i = 0; i < paths.length; i += 1000)
+    await batch("files/create_folder_batch", "files/create_folder_batch/check", { paths: paths.slice(i, i + 1000), autorename: false, force_async: false });
+}
+
+/** Moves a path to Dropbox's deleted files (restorable there). */
+export async function remove(path: string) {
+  await rpc("files/delete_v2", { path });
+}

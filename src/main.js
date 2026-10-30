@@ -1,10 +1,13 @@
 import "./styles.css";
 import * as dbx from "./dropbox";
 import { EAGLE_IMPORT } from "./config";
+import * as eagle from "./eagle";
 
 (async()=>{
 const $=id=>document.getElementById(id);
 let eagleMode=false;
+// #eagle opens the importer on the public build too, for the one-off migration of the Eagle libraries.
+const EAGLE=EAGLE_IMPORT||location.hash==="#eagle";
 let dbxMode=false,own=null;
 const HEART=`<svg class="hi" viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
 const favBtn=b=>{b.firstChild.insertAdjacentHTML("beforebegin",HEART);return b};
@@ -237,10 +240,10 @@ $("bTrash").onclick=trashSel;
 $("bRestore").onclick=()=>{const s=selItems();s.forEach(i=>i.trashed=false);st.sel.clear();save();render();toast(`${s.length} 件を元に戻しました`)};
 $("bTag").onclick=()=>formDlg("タグを追加",`<input id="fTag" list="tagList" placeholder="タグ名" required><datalist id="tagList">${TAGS.map(t=>`<option value="${esc(t)}">`).join("")}</datalist>`,"追加",()=>{const t=$("fTag").value.trim();if(!t)return;selItems().forEach(i=>{if(!i.tags.includes(t))i.tags.push(t)});save();render();toast(`「${t}」を追加しました`)});
 $("bMove").onclick=()=>formDlg("移動",`<select id="fFolder">${folderOpts()}</select>`,"移動",()=>{const f=$("fFolder").value;const s=selItems();s.forEach(i=>i.folder=f);st.sel.clear();save();render();toast(`${s.length} 件を ${f} へ移動しました`)});
-$("addBtn").onclick=()=>formDlg("追加",`<select id="fKind"><option value="file">ファイル（画像・動画・テキスト）</option><option value="url">URL</option>${EAGLE_IMPORT&&!dbxMode?`<option value="eagle">Eagleライブラリ（.library フォルダ）</option>`:""}</select><input id="fUrl" type="url" placeholder="https://" hidden><select id="fFolder">${folderOpts(st.folder)}</select>`,"追加",()=>{
+$("addBtn").onclick=()=>formDlg("追加",`<select id="fKind"><option value="file">ファイル（画像・動画・テキスト）</option><option value="url">URL</option>${EAGLE?`<option value="eagle">Eagleライブラリ（.library フォルダ）</option>`:""}</select><input id="fUrl" type="url" placeholder="https://" hidden><select id="fFolder">${folderOpts(st.folder)}</select>`,"追加",()=>{
   const f=$("fFolder").value;
   if($("fKind").value==="file"){pendingFolder=f;$("file").click();return}
-  if($("fKind").value==="eagle"){$("eagleDir").click();return}
+  if($("fKind").value==="eagle"){if(dbxMode)importEagleDropbox();else $("eagleDir").click();return}
   const u=$("fUrl").value.trim();if(!/^https?:\/\//.test(u))return toast("URLを入力してください");
   const key=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
   items.unshift({id:(dbxMode?"url:":"id:url")+key,key,name:new URL(u).hostname,folder:f,kind:"url",url:u,tags:[],favorite:false,addedAt:Date.now(),trashed:false,extra:!dbxMode,dbx:dbxMode});save();render();toast("URLを追加しました");
@@ -267,6 +270,15 @@ async function readText(it){
   const buf=await it.file.arrayBuffer();
   try{it.text=new TextDecoder("utf-8",{fatal:true}).decode(buf);it.enc="UTF-8"}catch(e){it.text=new TextDecoder("shift_jis").decode(buf);it.enc="Shift_JIS"}
   return it.text;
+}
+async function importEagleDropbox(){
+  flushSave();$("sync").lastChild.textContent="読み込み中";
+  try{
+    const r=await eagle.importAll(own,m=>toast(`読み込み中 ${m}`));
+    if(!r.libs.length){$("sync").lastChild.textContent="Dropbox";return toast(`${eagle.EAGLE_DIR} にEagleライブラリがありません`)}
+    await loadDropbox();
+    toast(`${r.libs.join("・")}：${r.items} 件、URL ${r.urls} 件を取り込みました${r.failed?`（${r.failed} 件は取り込めませんでした）`:""}`);
+  }catch(e){$("sync").lastChild.textContent="Dropbox";toast("Eagleライブラリを取り込めませんでした")}
 }
 $("eagleDir").onchange=e=>{const fs=[...e.target.files];e.target.value="";importEagle(fs)};
 const VIEWABLE=["jpg","jpeg","png","gif","webp","bmp","svg","avif","ico"],VIDEO=["mp4","webm","mov","m4v","ogv"];
