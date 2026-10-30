@@ -4,6 +4,9 @@ import { EAGLE_IMPORT } from "./config";
 import * as eagle from "./eagle";
 import PTHEMES from "./themes.json";
 
+// Web fonts are added from here so their stylesheet doesn't hold up the first render.
+document.head.append(Object.assign(document.createElement("link"),{rel:"stylesheet",href:"https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap"}));
+
 (async()=>{
 const $=id=>document.getElementById(id);
 let eagleMode=false;
@@ -64,7 +67,7 @@ const thumbCache=new Map();
 const BLANK="data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>');
 function thumb(it){
   if(it.blobUrl)return it.blobUrl;
-  if(it.dbx){if(thumbCache.has(it.id))return thumbCache.get(it.id);if(it.thumbable)queueThumb(it.id);return BLANK}
+  if(it.dbx)return thumbCache.get(it.id)||BLANK;
   if(it.local)return "data:image/svg+xml,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#8c97a8"/></svg>`);
   if(thumbCache.has(it.id))return thumbCache.get(it.id);
   const cv=document.createElement("canvas");const S=320,SH=Math.round(S*(it.h/it.w||1));cv.width=S;cv.height=SH;
@@ -73,15 +76,18 @@ function thumb(it){
 
 
 /* Dropbox */
-const thumbQ=new Set();let thumbBusy=0,thumbT;
-function queueThumb(id){if(thumbQ.has(id))return;thumbQ.add(id);clearTimeout(thumbT);thumbT=setTimeout(pumpThumbs,30)}
-async function pumpThumbs(){
-  while(thumbQ.size&&thumbBusy<3){
-    const ids=[...thumbQ].slice(0,25);ids.forEach(i=>thumbQ.delete(i));thumbBusy++;
-    dbx.thumbnails(ids).then(m=>{for(const id of ids){const u=m.get(id);if(!u){thumbCache.set(id,BLANK);continue}thumbCache.set(id,u);document.querySelectorAll(`img[data-id="${CSS.escape(id)}"]`).forEach(im=>im.src=u)}})
-      .catch(()=>ids.forEach(id=>thumbCache.delete(id))).finally(()=>{thumbBusy--;pumpThumbs()});
+// Thumbnails are asked for when a card comes near the screen; saved ones come from IndexedDB, the rest in small parallel batches.
+const thumbQ=[],thumbAsked=new Set();let thumbBusy=0,thumbT;
+function queueThumb(it){if(thumbAsked.has(it.id))return;thumbAsked.add(it.id);thumbQ.push({id:it.id,rev:it.rev});clearTimeout(thumbT);thumbT=setTimeout(pumpThumbs,16)}
+function setThumb(id,b){const u=b?URL.createObjectURL(b):BLANK;thumbCache.set(id,u);if(b)document.querySelectorAll(`img[data-id="${CSS.escape(id)}"]`).forEach(im=>im.src=u)}
+function pumpThumbs(){
+  while(thumbQ.length&&thumbBusy<6){
+    const fs=thumbQ.splice(0,10);thumbBusy++;
+    dbx.thumbnails(fs,setThumb).catch(()=>fs.forEach(f=>{if(!thumbCache.has(f.id))thumbAsked.delete(f.id)})).finally(()=>{thumbBusy--;pumpThumbs()});
   }
 }
+let thumbIO;
+function thumbObs(){return thumbIO||=new IntersectionObserver(es=>{for(const e of es)if(e.isIntersecting){thumbIO.unobserve(e.target);queueThumb(e.target._th)}},{root:$("wrap"),rootMargin:"1200px"})}
 /* URL: preview image (og:image) via /api/ogp, shrunk to JPEG and kept in /.tehon/ogp so it survives the page changing */
 const OGP_DIR=dbx.META_DIR+"/ogp";let ogpFiles=new Map(),ogpBusy=0;const ogpQ=[];
 const urlHash=s=>{let a=0x811c9dc5,b=0x9747b28c;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);a=Math.imul(a^c,16777619);b=Math.imul(b^c,2246822507)}return (a>>>0).toString(16).padStart(8,"0")+(b>>>0).toString(16).padStart(8,"0")};
@@ -91,7 +97,7 @@ function urlThumb(it){
 function pumpOgp(){while(ogpQ.length&&ogpBusy<4){ogpBusy++;ogpQ.shift()().finally(()=>{ogpBusy--;pumpOgp()})}}
 async function loadOgp(it){
   const name=urlHash(it.url)+".jpg",saved=dbxMode&&ogpFiles.get(name);
-  if(saved)return (await dbx.thumbnails([saved])).get(saved)||null;
+  if(saved){const b=(await dbx.thumbnails([{id:saved}])).get(saved);return b?URL.createObjectURL(b):null}
   const r=await fetch("/api/ogp?url="+encodeURIComponent(it.url));
   if(!r.ok||!(r.headers.get("Content-Type")||"").startsWith("image/"))return null;
   const bm=await createImageBitmap(await r.blob()),k=Math.min(1,640/bm.width);
@@ -168,12 +174,14 @@ async function loadDropbox(keep=false){
     const out=entries.filter(e=>e[".tag"]==="file").map(e=>{const x=ef.get(e.path_lower.normalize("NFC"));const it=dbxItem(e,meta.items[e.id]||x);if(x?.addedAt)it.addedAt=x.addedAt;return it});
     for(const u of em?.urls||[]){const k="eagle-"+u.addedAt+"-"+u.url;if(!meta.urls[k])meta.urls[k]={...u,updatedAt:0}}
     for(const [k,u] of Object.entries(meta.urls))if(!u.deleted)out.push({id:"url:"+k,key:k,name:u.name,folder:u.folder,kind:"url",url:u.url,tags:u.tags||[],favorite:!!u.favorite,trashed:!!u.trashed,addedAt:u.addedAt,w:0,h:0,dbx:true});
+    const oldRev=new Map(items.map(i=>[i.id,i.rev]));
+    for(const it of out)if(oldRev.has(it.id)&&oldRev.get(it.id)!==it.rev){thumbCache.delete(it.id);thumbAsked.delete(it.id);previewP.delete(it.id)}
     dbxMode=true;eagleMode=false;dbxPending=false;items=out;
     FOLDERS=entries.filter(e=>e[".tag"]==="folder").map(e=>e.path_display.slice(1)).sort((a,b)=>a.localeCompare(b,"ja"));
     TAGS.length=0;TAGS.push(...new Set(out.flatMap(i=>i.tags)));
     snap.clear();items.forEach(it=>snap.set(it.id,JSON.stringify(metaOf(it))));
     if(!keep){st.view="all";st.folder=null;st.tag=null;st.q="";$("q").value="";st.sel.clear()}
-    saveCache();
+    saveCache();dbx.cachePrune(new Set([...out.map(i=>i.id),...ogpFiles.values()])).catch(()=>{});
     $("sync").lastChild.textContent="Dropbox";$("toast").hidden=true;render();
   }catch(e){
     dbxPending=false;if(!dbxMode)render();
@@ -230,7 +238,7 @@ function setFolder(f){st.view="all";st.folder=st.folder===f?null:f;st.sel.clear(
 function setTag(t){if(st.view==="trash")st.view="all";st.tag=st.tag===t?null:t;st.sel.clear();render()}
 function renderGrid(){
   list=filtered();
-  const g=$("grid");liveIO?.disconnect();g.querySelectorAll("video").forEach(v=>{v.pause();v.removeAttribute("src");v.load()});g.replaceChildren();
+  const g=$("grid");liveIO?.disconnect();thumbIO?.disconnect();g.querySelectorAll("video").forEach(v=>{v.pause();v.removeAttribute("src");v.load()});g.replaceChildren();
   g.classList.toggle("selecting",st.selecting||st.sel.size>0);
   if(!list.length){
     if(!items.length&&st.view!=="trash"){
@@ -245,11 +253,12 @@ function appendCards(start){
   const frag=document.createDocumentFragment();
   list.slice(start,start+CHUNK).forEach((it,j)=>{const idx=start+j;
     const c=document.createElement("div");c.className="card"+(it.kind==="text"||it.kind==="url"?"":" media")+(st.sel.has(it.id)?" sel":"");c.tabIndex=0;c.dataset.i=idx;
-    if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";const put=t=>{d.textContent=t.slice(0,400);d.style.fontSize=txtSize(t)+"px"};if(it.text!=null)put(it.text);else d.textContent="…";c.append(d);if(it.text==null&&!(it.dbx&&it.size>2e5))readText(it).then(put)}
+    if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";const put=t=>{d.textContent=t.slice(0,400);d.style.fontSize=txtSize(t)+"px"};if(it.text!=null)put(it.text);else d.textContent="…";c.append(d);if(it.text==null&&!(it.dbx&&it.size>2e5))(it.dbx?textPreview(it):readText(it)).then(put)}
     else if(it.kind==="url")urlCard(c,it);
     else if(it.kind==="video"&&(it.file||it.dbx)){const v=document.createElement("video");v.className="th";v.muted=true;v.loop=true;v.playsInline=true;v.preload="none";
       if(it.thumbFile)v.poster=it.blobUrl;v._it=it;c.append(v);liveObs().observe(v)}
     else{const im=document.createElement("img");im.className="th";im.loading="lazy";im.decoding="async";im.alt="";if(it.dbx)im.dataset.id=it.id;im.src=it.kind==="gif"&&it.file?(it.srcUrl||=URL.createObjectURL(it.file)):thumb(it);
+      if(it.dbx&&it.thumbable&&!thumbCache.has(it.id)){im._th=it;thumbObs().observe(im)}
       if(it.kind==="gif"&&it.dbx){im._it=it;liveObs().observe(im)}c.append(im)}
     if(it.kind!=="image"||it.badge){const k=document.createElement("span");k.className="kind";k.textContent=(it.badge||it.kind).toUpperCase();c.append(k)}
     const ck=document.createElement("span");ck.className="chk";ck.textContent="✓";c.append(ck);
@@ -447,6 +456,13 @@ $("setBtn").onclick=()=>{closeNav();
     $("fThemeFile").onclick=()=>{const i=document.createElement("input");i.type="file";i.accept=".json,application/json";i.onchange=()=>i.files[0]&&importTheme(i.files[0]);i.click()};
     $("fKeys").onclick=keysDlg;const b=$("fDbx");if(b)b.onclick=async()=>{if(!dbxMode)return dbx.startAuth();flushSave();await dbx.disconnect();try{localStorage.removeItem(CACHE)}catch(e){}location.reload()}})};
 const TEXT=["txt","md","text","csv","json"];
+// Card text for Dropbox files: the first 400 characters, kept in IndexedDB until the file changes.
+const previewP=new Map();
+function textPreview(it){
+  if(!previewP.has(it.id))previewP.set(it.id,dbx.cacheGet([{key:"text:"+it.id,rev:it.rev}]).catch(()=>new Map()).then(m=>m.get("text:"+it.id)??
+    readText(it).then(t=>{const v=t.slice(0,400);if(t)dbx.cacheSet([{key:"text:"+it.id,rev:it.rev,value:v}]).catch(()=>{});return v})));
+  return previewP.get(it.id);
+}
 async function readText(it){
   if(it.text!=null)return it.text;
   if(it.dbx){if(it.textP)return it.textP;return it.textP=dbx.readText(it.id).then(r=>{it.readonly=r.truncated||r.enc==="Shift_JIS";it.enc=r.enc;it.rev=r.rev||it.rev;it.text=r.text;return r.text}).catch(()=>{it.textP=null;return ""})}
