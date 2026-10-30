@@ -135,7 +135,7 @@ async function loadDropbox(){
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
 const folderOpts=sel=>(dbxMode?["",...FOLDERS]:FOLDERS).map(f=>`<option value="${esc(f)}"${f===sel?" selected":""}>${f?esc(f):"/"}</option>`).join("");
 /* state */
-const st={rseed:Date.now()|0,layout:"grid",view:"all",folder:null,tag:null,q:"",sort:"added-desc",sel:new Set(),selecting:false,anchor:null};
+const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,tag:null,q:"",sort:"added-desc",sel:new Set(),selecting:false,anchor:null};
 let list=[];
 function filtered(){
   const q=st.q.trim().toLowerCase();
@@ -294,7 +294,7 @@ $("sort").onchange=e=>{st.sort=e.target.value;if(st.sort==="random")st.rseed=Dat
 $("shuffle").onclick=()=>{st.rseed=(Date.now()^Math.random()*1e9)|0;renderGrid();$("wrap").scrollTop=0};
 function setLayout(l){st.layout=l;$("grid").classList.toggle("fall",l==="fall");$("lGrid").classList.toggle("on",l==="grid");$("lFall").classList.toggle("on",l==="fall");try{localStorage.setItem("tehon-layout",l)}catch(e){}}
 $("lGrid").onclick=()=>setLayout("grid");$("lFall").onclick=()=>setLayout("fall");
-try{const l=localStorage.getItem("tehon-layout");if(l)setLayout(l)}catch(e){}
+{let l=null;try{l=localStorage.getItem("tehon-layout")}catch(e){}setLayout(l||"fall")}
 // Column count; null follows the window width.
 const curCols=()=>{const g=$("grid");if(g.style.getPropertyValue("--cols"))return +g.style.getPropertyValue("--cols");const cs=getComputedStyle(g),cell=parseFloat(cs.getPropertyValue("--cell"))||170,gap=parseFloat(cs.columnGap)||10;return Math.max(1,Math.floor((g.clientWidth+gap)/(cell+gap)))};
 function setCols(n){const g=$("grid");n=n&&Math.max(1,Math.min(12,n));if(n)g.style.setProperty("--cols",n);else g.style.removeProperty("--cols");g.classList.toggle("cols",!!n);$("size").value=n||curCols();try{localStorage.setItem("tehon-cols",n||"")}catch(e){}}

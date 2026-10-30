@@ -30,7 +30,7 @@
         <option value="random">ランダム</option>
       </select>
       <button class="btn" id="shuffle" hidden>シャッフル</button>
-      <span class="seg" role="group" aria-label="レイアウト"><button id="lGrid" class="on" aria-label="グリッド" title="グリッド"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg></button><button id="lFall" aria-label="ウォーターフォール" title="ウォーターフォール"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="8" rx="1"/><rect x="9" y="1" width="6" height="5" rx="1"/><rect x="1" y="11" width="6" height="4" rx="1"/><rect x="9" y="8" width="6" height="7" rx="1"/></svg></button></span>
+      <span class="seg" role="group" aria-label="レイアウト"><button id="lGrid" aria-label="グリッド" title="グリッド"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg></button><button id="lFall" class="on" aria-label="ウォーターフォール" title="ウォーターフォール"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="8" rx="1"/><rect x="9" y="1" width="6" height="5" rx="1"/><rect x="1" y="11" width="6" height="4" rx="1"/><rect x="9" y="8" width="6" height="7" rx="1"/></svg></button></span>
       <input class="size" id="size" type="range" min="1" max="12" step="1" value="6" aria-label="列数" title="列数">
       <button class="btn" id="selBtn">選択</button>
       <button class="btn pri" id="addBtn">＋ 追加</button>
@@ -47,7 +47,7 @@
       <button class="btn" id="bAll">すべて選択</button>
       <button class="btn" id="bNone">解除</button>
     </div>
-    <div class="grid-wrap sb" id="wrap"><div class="grid" id="grid"></div></div>
+    <div class="grid-wrap sb" id="wrap"><div class="grid fall" id="grid"></div></div>
   </main>
 </div>
 
