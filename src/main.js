@@ -91,7 +91,9 @@ function pumpThumbs(){
   }
 }
 let thumbIO;
-function thumbObs(){return thumbIO||=new IntersectionObserver(es=>{for(const e of es)if(e.isIntersecting){thumbIO.unobserve(e.target);queueThumb(e.target._th)}},{root:$("wrap"),rootMargin:"1200px"})}
+// Nearest the top of the screen first: in the waterfall, page order runs down each column, not across the screen.
+function thumbObs(){return thumbIO||=new IntersectionObserver(es=>{
+  for(const e of es.filter(e=>e.isIntersecting).sort((a,b)=>Math.max(0,a.boundingClientRect.top)-Math.max(0,b.boundingClientRect.top))){const el=e.target;thumbIO.unobserve(el);el._tx?textPreview(el._tx).then(el._put):queueThumb(el._th)}},{root:$("wrap"),rootMargin:"1200px"})}
 /* URL: preview image (og:image) via /api/ogp, shrunk to JPEG and kept in /.tehon/ogp so it survives the page changing */
 const OGP_DIR=dbx.META_DIR+"/ogp";let ogpFiles=new Map(),ogpBusy=0;const ogpQ=[];
 const urlHash=s=>{let a=0x811c9dc5,b=0x9747b28c;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);a=Math.imul(a^c,16777619);b=Math.imul(b^c,2246822507)}return (a>>>0).toString(16).padStart(8,"0")+(b>>>0).toString(16).padStart(8,"0")};
@@ -257,7 +259,7 @@ function appendCards(start){
   const frag=document.createDocumentFragment();
   list.slice(start,start+CHUNK).forEach((it,j)=>{const idx=start+j;
     const c=document.createElement("div");c.className="card"+(it.kind==="text"||it.kind==="url"?"":" media")+(st.sel.has(it.id)?" sel":"");c.tabIndex=0;c.dataset.i=idx;
-    if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";const put=t=>{d.textContent=t.slice(0,400);d.style.fontSize=txtSize(t)+"px"};if(it.text!=null)put(it.text);else d.textContent="…";c.append(d);if(it.text==null&&!(it.dbx&&it.size>2e5))(it.dbx?textPreview(it):readText(it)).then(put)}
+    if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";const put=t=>{d.textContent=t.slice(0,400);d.style.fontSize=txtSize(t)+"px"};if(it.text!=null)put(it.text);else d.textContent="…";c.append(d);if(it.text==null&&!(it.dbx&&it.size>2e5)){if(it.dbx){d._tx=it;d._put=put;thumbObs().observe(d)}else readText(it).then(put)}}
     else if(it.kind==="url")urlCard(c,it);
     else if(it.kind==="video"&&(it.file||it.dbx)){const v=document.createElement("video");v.className="th";v.muted=true;v.loop=true;v.playsInline=true;v.preload="none";
       if(it.thumbFile)v.poster=it.blobUrl;v._it=it;c.append(v);liveObs().observe(v)}
@@ -463,10 +465,13 @@ $("setBtn").onclick=()=>{closeNav();
     $("fKeys").onclick=keysDlg;const b=$("fDbx");if(b)b.onclick=async()=>{if(!dbxMode)return dbx.startAuth();flushSave();await dbx.disconnect();try{localStorage.removeItem(CACHE)}catch(e){}location.reload()}})};
 const TEXT=["txt","md","text","csv","json"];
 // Card text for Dropbox files: the first 400 characters, kept in IndexedDB until the file changes.
-const previewP=new Map();
+// Downloads run 10 at a time, in the order cards come near the screen, so they don't all wait on each other.
+const previewP=new Map(),textQ=[];let textBusy=0;
+function textSlot(fn){return new Promise(res=>{textQ.push(()=>fn().then(res));pumpText()})}
+function pumpText(){while(textQ.length&&textBusy<10){textBusy++;textQ.shift()().finally(()=>{textBusy--;pumpText()})}}
 function textPreview(it){
   if(!previewP.has(it.id))previewP.set(it.id,dbx.cacheGet([{key:"text:"+it.id,rev:it.rev}]).catch(()=>new Map()).then(m=>m.get("text:"+it.id)??
-    readText(it).then(t=>{const v=t.slice(0,400);if(t)dbx.cacheSet([{key:"text:"+it.id,rev:it.rev,value:v}]).catch(()=>{});return v})));
+    textSlot(()=>it.text!=null?Promise.resolve(it.text):readText(it)).then(t=>{const v=t.slice(0,400);if(t)dbx.cacheSet([{key:"text:"+it.id,rev:it.rev,value:v}]).catch(()=>{});return v})));
   return previewP.get(it.id);
 }
 async function readText(it){
