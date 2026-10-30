@@ -26,7 +26,6 @@ img{max-width:100%}
 .swatch:focus-visible{outline:2px solid var(--accent)}
 .sw-dark{background:#06080c}.sw-blur{background:linear-gradient(135deg,rgba(255,255,255,.7),rgba(120,130,150,.5))}.sw-light{background:#e9ecf1}
 .swatches{display:flex;gap:6px;align-items:center;padding:0 4px}
-.setbtn{margin-top:auto}
 /* scrollbars: hidden at rest, shown while scrolling or hovering; gutter reserved so layout never shifts */
 .sb{scrollbar-width:thin;scrollbar-color:transparent transparent;scrollbar-gutter:stable;transition:scrollbar-color .3s}
 .sb:hover,.sb.show{scrollbar-color:color-mix(in srgb,var(--muted) 55%,transparent) transparent}
