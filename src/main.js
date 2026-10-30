@@ -102,9 +102,11 @@ function dbxItem(e,m){
 async function loadDropbox(){
   $("sync").lastChild.textContent="読み込み中";
   try{
-    const [entries,meta]=await Promise.all([dbx.listAll(n=>toast(`読み込み中 ${n} 件`)),dbx.loadMeta()]);
+    const [entries,meta,em]=await Promise.all([dbx.listAll(n=>toast(`読み込み中 ${n} 件`)),dbx.loadMeta(),dbx.loadEagleManifest()]);
     own=meta.own;
-    const out=entries.filter(e=>e[".tag"]==="file").map(e=>dbxItem(e,meta.items[e.id]));
+    const ef=new Map(Object.entries(em?.files||{}).map(([k,v])=>[k.normalize("NFC").toLowerCase(),v]));
+    const out=entries.filter(e=>e[".tag"]==="file").map(e=>{const x=ef.get(e.path_lower.normalize("NFC"));const it=dbxItem(e,meta.items[e.id]||x);if(x?.addedAt)it.addedAt=x.addedAt;return it});
+    for(const u of em?.urls||[]){const k="eagle-"+u.addedAt+"-"+u.url;if(!meta.urls[k])meta.urls[k]={...u,updatedAt:0}}
     for(const [k,u] of Object.entries(meta.urls))if(!u.deleted)out.push({id:"url:"+k,key:k,name:u.name,folder:u.folder,kind:"url",url:u.url,tags:u.tags||[],favorite:!!u.favorite,trashed:!!u.trashed,addedAt:u.addedAt,w:0,h:0,dbx:true});
     dbxMode=true;eagleMode=false;items=out;
     FOLDERS=entries.filter(e=>e[".tag"]==="folder").map(e=>e.path_display.slice(1)).sort((a,b)=>a.localeCompare(b,"ja"));
@@ -166,7 +168,7 @@ function setFolder(f){st.view="all";st.folder=st.folder===f?null:f;st.sel.clear(
 function setTag(t){if(st.view==="trash")st.view="all";st.tag=st.tag===t?null:t;st.sel.clear();render()}
 function renderGrid(){
   list=filtered();
-  const g=$("grid");g.replaceChildren();
+  const g=$("grid");liveIO?.disconnect();g.querySelectorAll("video").forEach(v=>{v.pause();v.removeAttribute("src");v.load()});g.replaceChildren();
   g.classList.toggle("selecting",st.selecting||st.sel.size>0);
   if(!list.length){const e=document.createElement("div");e.className="empty";e.textContent=st.view==="trash"?"ゴミ箱は空です":"該当する資料はありません";g.append(e);return}
   appendCards(0);
@@ -179,7 +181,10 @@ function appendCards(start){
     const c=document.createElement("div");c.className="card"+(st.sel.has(it.id)?" sel":"");c.tabIndex=0;c.dataset.i=idx;
     if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";d.textContent=it.text!=null?it.text.slice(0,400):"…";c.append(d);if(it.text==null&&!(it.dbx&&it.size>2e5))readText(it).then(t=>{d.textContent=t.slice(0,400)})}
     else if(it.kind==="url"){c.innerHTML=`<div class="urlth"><b></b><span></span></div>`;c.querySelector("b").textContent=it.name;c.querySelector(".urlth span").textContent=it.url.replace(/^https?:\/\//,"")}
-    else{const im=document.createElement("img");im.className="th";im.loading="lazy";im.decoding="async";im.alt="";if(it.dbx)im.dataset.id=it.id;im.src=it.kind==="gif"&&it.file?(it.srcUrl||=URL.createObjectURL(it.file)):thumb(it);c.append(im)}
+    else if(it.kind==="video"&&(it.file||it.dbx)){const v=document.createElement("video");v.className="th";v.muted=true;v.loop=true;v.playsInline=true;v.preload="none";
+      if(it.thumbFile)v.poster=it.blobUrl;v._it=it;c.append(v);liveObs().observe(v)}
+    else{const im=document.createElement("img");im.className="th";im.loading="lazy";im.decoding="async";im.alt="";if(it.dbx)im.dataset.id=it.id;im.src=it.kind==="gif"&&it.file?(it.srcUrl||=URL.createObjectURL(it.file)):thumb(it);
+      if(it.kind==="gif"&&it.dbx){im._it=it;liveObs().observe(im)}c.append(im)}
     if(it.kind!=="image"||it.badge){const k=document.createElement("span");k.className="kind";k.textContent=(it.badge||it.kind).toUpperCase();c.append(k)}
     const ck=document.createElement("span");ck.className="chk";ck.textContent="✓";c.append(ck);
     const m=document.createElement("div");m.className="meta";m.innerHTML=`<span class="nm"></span><button class="fv${it.favorite?" on":""}" aria-label="お気に入り">${HEART}</button>`;
@@ -190,6 +195,15 @@ function appendCards(start){
   if(start+CHUNK<list.length){const s=document.createElement("div");s.className="more";s.style.gridColumn="1/-1";s.style.height="1px";g.append(s);
     gridIO?.disconnect();gridIO=new IntersectionObserver(es=>{if(es[0].isIntersecting){gridIO.disconnect();appendCards(start+CHUNK)}},{root:$("wrap"),rootMargin:"800px"});gridIO.observe(s)}
 }
+/* 表示中の動画は再生、画面外は停止。Dropboxの動画・GIFは見えた時点で取得 */
+let liveIO;
+function liveObs(){return liveIO||=new IntersectionObserver(es=>{for(const e of es){const el=e.target,it=el._it;
+  if(!e.isIntersecting){if(el.tagName==="VIDEO")el.pause();continue}
+  if(el.tagName==="IMG"){liveIO.unobserve(el);dbxLink(it).then(u=>{const a=new Image();a.onload=()=>{el.removeAttribute("data-id");el.src=u};a.src=u}).catch(()=>{});continue}
+  if(el.src){el.play().catch(()=>{});continue}
+  (it.file?Promise.resolve(it.srcUrl||=URL.createObjectURL(it.file)):dbxLink(it)).then(u=>{if(!el.isConnected)return;el.src=u;el.play().catch(()=>{})}).catch(()=>{})}
+},{root:$("wrap"),rootMargin:"200px"})}
+function dbxLink(it){return it.link&&Date.now()<it.linkExp?Promise.resolve(it.link):dbx.tempLink(it.id).then(l=>{it.link=l;it.linkExp=Date.now()+3.5*3600e3;return l})}
 function renderSel(){
   const n=st.sel.size;$("selbar").hidden=!(n||st.selecting);$("selN").textContent=n;
   const tr=st.view==="trash";$("bRestore").hidden=!tr;$("bTrash").textContent=tr?"ゴミ箱から削除":"ゴミ箱へ";
@@ -415,7 +429,7 @@ function loadV(){
       else{vi.onload=()=>useEl(vi,vi.naturalWidth,vi.naturalHeight);vi.onerror=()=>toast("プレビューできない形式です");vi.src=src}};
     [vc,vi,vv].forEach(x=>x.hidden=true);V.el=null;
     if(!it.viewable){const t=thumbCache.get(it.id);if(t&&t!==BLANK){show(t);toast("サムネイルを表示しています")}else toast("プレビューできない形式です");return}
-    (it.link&&Date.now()<it.linkExp?Promise.resolve(it.link):dbx.tempLink(it.id).then(l=>{it.link=l;it.linkExp=Date.now()+3.5*3600e3;return l})).then(show).catch(()=>toast("読み込めませんでした"));
+    dbxLink(it).then(show).catch(()=>toast("読み込めませんでした"));
     return;
   }
   if(it.local){
