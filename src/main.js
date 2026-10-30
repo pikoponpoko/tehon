@@ -77,6 +77,19 @@ async function pumpThumbs(){
       .catch(()=>ids.forEach(id=>thumbCache.delete(id))).finally(()=>{thumbBusy--;pumpThumbs()});
   }
 }
+// Full-size images: temporary link + decoded Image kept for a few items, so opening and paging are instant.
+function link(it){return it.link&&Date.now()<it.linkExp?Promise.resolve(it.link):dbx.tempLink(it.id).then(l=>{it.link=l;it.linkExp=Date.now()+3.5*3600e3;return l})}
+const fullCache=new Map();
+function full(it){
+  const c=fullCache.get(it.id);if(c&&Date.now()<it.linkExp){fullCache.delete(it.id);fullCache.set(it.id,c);return c.p}
+  const im=new Image();im.decoding="async";
+  const p=link(it).then(l=>{im.src=l;return im.decode().then(()=>l,()=>l)});
+  p.catch(()=>fullCache.delete(it.id));fullCache.set(it.id,{p,im});
+  while(fullCache.size>8)fullCache.delete(fullCache.keys().next().value);
+  return p;
+}
+function prefetch(it){if(!it?.dbx||!it.viewable)return;it.kind==="video"?link(it).catch(()=>{}):it.kind!=="text"&&it.kind!=="url"&&full(it).catch(()=>{})}
+function prefetchAround(){for(const d of[1,-1,2])prefetch(list[V.i+d])}
 const VIEW_EXT=["jpg","jpeg","png","gif","webp","bmp","svg","avif","ico"],VID_EXT=["mp4","webm","mov","m4v","ogv"],TXT_EXT=["txt","md","text","csv","json"];
 function kindOf(ext){return ext==="gif"?"gif":VID_EXT.includes(ext)?"video":TXT_EXT.includes(ext)?"text":"image"}
 const metaOf=it=>it.kind==="url"?{name:it.name,url:it.url,folder:it.folder,tags:it.tags,favorite:it.favorite,trashed:it.trashed,addedAt:it.addedAt}:{tags:it.tags,favorite:it.favorite,trashed:it.trashed};
@@ -198,6 +211,7 @@ $("grid").addEventListener("click",e=>{
   if(e.metaKey||e.ctrlKey||st.selecting||st.sel.size||e.target.closest(".chk")){st.sel.has(it.id)?st.sel.delete(it.id):st.sel.add(it.id);st.anchor=+c.dataset.i;renderGrid();renderSel();return}
   st.anchor=+c.dataset.i;openViewer(+c.dataset.i);
 });
+let hov;$("grid").addEventListener("pointerover",e=>{const c=e.target.closest(".card");clearTimeout(hov);if(c&&e.pointerType==="mouse")hov=setTimeout(()=>prefetch(list[+c.dataset.i]),120)});
 let lp;$("grid").addEventListener("pointerdown",e=>{const c=e.target.closest(".card");if(!c||e.pointerType==="mouse")return;lp=setTimeout(()=>{st.selecting=true;st.sel.add(list[+c.dataset.i].id);renderGrid();renderSel();lp="done"},450)});
 ["pointerup","pointercancel","pointermove"].forEach(ev=>$("grid").addEventListener(ev,e=>{if(ev==="pointermove"&&Math.abs(e.movementX)+Math.abs(e.movementY)<4)return;if(lp!=="done")clearTimeout(lp)}));
 $("grid").addEventListener("click",e=>{if(lp==="done"){lp=null;e.stopImmediatePropagation()}},true);
@@ -359,7 +373,7 @@ const vt=$("vt");let vtTimer;
 function useEl(el,w,h){[vc,vi,vv,vt].forEach(x=>x.hidden=x!==el);["vIn","vOut","vFit"].forEach(b=>$(b).hidden=el===vt);if(el===vt){V.el=null;return}V.el=el;V.w=w;V.h=h;fitV()}
 function closeViewer(){$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");renderGrid();$("grid").children[V.i]?.focus()}
 function loadV(){
-  cancelAnimationFrame(V.raf);vv.pause();V.video=null;
+  cancelAnimationFrame(V.raf);vv.pause();V.video=null;delete vi.dataset.ph;
   const it=list[V.i];$("vTitle").textContent=it.name;$("vFav").classList.toggle("on",it.favorite);
   const anim=it.kind==="gif"||it.kind==="video";$("vPlay").hidden=!anim||((it.local||it.dbx)&&it.kind==="gif");V.play=true;$("vPlay").textContent="❚❚";
   renderFoot(it);$("vState").textContent="";$("vReload").hidden=true;
@@ -374,7 +388,15 @@ function loadV(){
       else{vi.onload=()=>useEl(vi,vi.naturalWidth,vi.naturalHeight);vi.onerror=()=>toast("プレビューできない形式です");vi.src=src}};
     [vc,vi,vv].forEach(x=>x.hidden=true);V.el=null;
     if(!it.viewable){const t=thumbCache.get(it.id);if(t&&t!==BLANK){show(t);toast("サムネイルを表示しています")}else toast("プレビューできない形式です");return}
-    (it.link&&Date.now()<it.linkExp?Promise.resolve(it.link):dbx.tempLink(it.id).then(l=>{it.link=l;it.linkExp=Date.now()+3.5*3600e3;return l})).then(show).catch(()=>toast("読み込めませんでした"));
+    if(it.kind==="video"){link(it).then(show).catch(()=>toast("読み込めませんでした"));prefetchAround();return}
+    const t=thumbCache.get(it.id);
+    if(t&&t!==BLANK){vi.onload=()=>{if(vi.src!==t)return;const w=vi.naturalWidth,h=vi.naturalHeight,r=$("stage").getBoundingClientRect();
+        const k=w<480&&h<320?1:Math.max(r.width/w,r.height/h);useEl(vi,w*k,h*k);vi.dataset.ph="1"};vi.onerror=null;vi.src=t}
+    full(it).then(src=>{if(list[V.i]!==it||$("viewer").hidden)return;
+      vi.onload=()=>{const w=vi.naturalWidth,h=vi.naturalHeight;
+        if(vi.dataset.ph&&V.el===vi&&Math.abs(V.z-V.fit)>.001){V.z*=V.w/w;V.w=w;V.h=h;const r=$("stage").getBoundingClientRect();V.fit=Math.min(r.width/w,r.height/h,1)*.96;applyV()}else useEl(vi,w,h);delete vi.dataset.ph};
+      vi.onerror=()=>toast("プレビューできない形式です");vi.src=src}).catch(()=>toast("読み込めませんでした"));
+    prefetchAround();
     return;
   }
   if(it.local){
