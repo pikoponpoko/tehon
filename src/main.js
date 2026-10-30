@@ -115,6 +115,8 @@ function full(it){
 function prefetch(it){if(!it?.dbx||!it.viewable)return;it.kind==="video"?dbxLink(it).catch(()=>{}):it.kind!=="text"&&it.kind!=="url"&&full(it).catch(()=>{})}
 function prefetchAround(){for(const d of[1,-1,2])prefetch(list[V.i+d])}
 const VIEW_EXT=["jpg","jpeg","png","gif","webp","bmp","svg","avif","ico"],VID_EXT=["mp4","webm","mov","m4v","ogv"],TXT_EXT=["txt","md","text","csv","json"];
+/* text thumbnail: fewer characters → larger type */
+function txtSize(t){const n=t.replace(/\s+/g,"").length;return n<=10?24:n<=25?19:n<=50?16:n<=100?13.5:11.5}
 function kindOf(ext){return ext==="gif"?"gif":VID_EXT.includes(ext)?"video":TXT_EXT.includes(ext)?"text":"image"}
 const metaOf=it=>it.kind==="url"?{name:it.name,url:it.url,folder:it.folder,tags:it.tags,favorite:it.favorite,trashed:it.trashed,addedAt:it.addedAt}:{tags:it.tags,favorite:it.favorite,trashed:it.trashed};
 const snap=new Map();let saveT=null;
@@ -217,7 +219,7 @@ function appendCards(start){
   const frag=document.createDocumentFragment();
   list.slice(start,start+CHUNK).forEach((it,j)=>{const idx=start+j;
     const c=document.createElement("div");c.className="card"+(st.sel.has(it.id)?" sel":"");c.tabIndex=0;c.dataset.i=idx;
-    if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";d.textContent=it.text!=null?it.text.slice(0,400):"…";c.append(d);if(it.text==null&&!(it.dbx&&it.size>2e5))readText(it).then(t=>{d.textContent=t.slice(0,400)})}
+    if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";const put=t=>{d.textContent=t.slice(0,400);d.style.fontSize=txtSize(t)+"px"};if(it.text!=null)put(it.text);else d.textContent="…";c.append(d);if(it.text==null&&!(it.dbx&&it.size>2e5))readText(it).then(put)}
     else if(it.kind==="url")urlCard(c,it);
     else if(it.kind==="video"&&(it.file||it.dbx)){const v=document.createElement("video");v.className="th";v.muted=true;v.loop=true;v.playsInline=true;v.preload="none";
       if(it.thumbFile)v.poster=it.blobUrl;v._it=it;c.append(v);liveObs().observe(v)}
