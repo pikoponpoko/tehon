@@ -264,48 +264,52 @@ $("addBtn").onclick=()=>formDlg("追加",`<select id="fKind"><option value="file
 let pendingFolder=null;
 const pref=(k,v)=>{try{if(v===undefined)return localStorage.getItem("tehon-"+k);localStorage.setItem("tehon-"+k,v)}catch(e){return null}};
 /* palette themes come from プリプロ名人 (src/themes.json, scripts/import-themes.mjs); [bg,panel,line,text,muted,accent,danger,lane] per tone */
-const OLD_THEMES=[["light","ライト"],["white","ホワイト"],["dark","ダーク"],["navy","ネイビー"],["graphite","グラファイト"]];
 const THEME_KEYS=["--bg","--panel","--line","--text","--muted","--accent","--danger","--lane"];
 const customThemes=()=>{try{return JSON.parse(pref("themes-custom")||"[]")}catch(e){return[]}};
-const findTheme=t=>[...PTHEMES,...customThemes()].find(x=>x.id===t);
+const allThemes=()=>[...PTHEMES,...customThemes()];
+const findTheme=t=>allThemes().find(x=>x.id===t);
 const lum=h=>{const c=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map(v=>v<=.03928?v/12.92:((v+.055)/1.055)**2.4);return .2126*c[0]+.7152*c[1]+.0722*c[2]};
 const contrast=(a,b)=>{const x=lum(a),y=lum(b);return(Math.max(x,y)+.05)/(Math.min(x,y)+.05)};
 const darkQ=matchMedia("(prefers-color-scheme:dark)");
 const TVARS=["--bg","--surface","--line","--fg","--muted","--accent","--accent-soft","--accent-ink","--on-accent","--fav","color-scheme"];
 function setTheme(t){
-  const r=document.documentElement,P=findTheme(t)||(OLD_THEMES.some(([v])=>v===t)?null:findTheme(t="default"));
-  TVARS.forEach(k=>r.style.removeProperty(k));
-  if(!P)r.dataset.tt=t;
-  else{delete r.dataset.tt;const tone=pref("tone")||"auto",dk=tone==="dark"||tone==="auto"&&darkQ.matches;
-    const[bg,panel,line,text,muted,accent,danger,lane]=dk?P.d:P.l;
-    [bg,panel,line,text,muted,accent,lane,contrast(accent,lane)>=3?accent:text,contrast(text,accent)>contrast(panel,accent)?text:panel,danger,dk?"dark":"light"].forEach((v,i)=>r.style.setProperty(TVARS[i],v))}
-  pref("theme",t)}
+  const r=document.documentElement,P=findTheme(t)||findTheme(t="default"),tone=pref("tone")||"auto",dk=tone==="dark"||tone==="auto"&&darkQ.matches;
+  const[bg,panel,line,text,muted,accent,danger,lane]=dk?P.d:P.l;
+  [bg,panel,line,text,muted,accent,lane,contrast(accent,lane)>=3?accent:text,contrast(text,accent)>contrast(panel,accent)?text:panel,danger,dk?"dark":"light"].forEach((v,i)=>r.style.setProperty(TVARS[i],v));
+  pref("theme",t);syncSettings()}
 darkQ.addEventListener("change",()=>setTheme(pref("theme")));
-const palHtml=t=>{const P=findTheme(t);if(!P)return"";const c=P.p.length?P.p:[...new Set(P.l)];return c.map(x=>`<i style="background:${x}"></i>`).join("")};
-const themeOpts=cur=>{const o=([v,l])=>`<option value="${v}"${v===cur?" selected":""}>${esc(l)}</option>`,cu=customThemes();
-  return`<optgroup label="プリプロ名人">${PTHEMES.map(x=>o([x.id,x.name])).join("")}</optgroup>${cu.length?`<optgroup label="読み込んだテーマ">${cu.map(x=>o([x.id,x.name])).join("")}</optgroup>`:""}<optgroup label="Tehon">${OLD_THEMES.map(o).join("")}</optgroup>`};
-function syncThemeForm(){const t=pref("theme"),fixed=!findTheme(t);$("fPal").innerHTML=palHtml(t);$("fPal").hidden=fixed;$("fToneL").hidden=$("fTone").hidden=fixed}
+/* swatch tiles like 尺取名人: the palette fills the tile, the name sits on top */
+const DEFAULT_SW=["#E8EFEA","#3772FF","#DF2935","#FDCA40","#2FA866","#A065E0","#F8902F","#34C3DB"];
+function tile(attr,v,name,sw){
+  return`<button type="button" class="tile" data-${attr}="${esc(v)}" aria-pressed="false"><span class="sw">${sw.map(c=>`<i style="background:${c}"></i>`).join("")}</span><span class="tn">${esc(name)}</span></button>`}
+const themeTiles=()=>allThemes().map(x=>tile("theme",x.id,x.name,x.id==="default"?DEFAULT_SW:x.p.length?x.p:[...new Set(x.l)])).join("");
+const VBGS=[["dark","黒",["#06080c"]],["blur","透明ぼかし",["#b4b9c3","#78829a"]],["light","ライトグレー",["#e9ecf1"]]];
+function seg(id,opts,cur){return`<div class="segc" id="${id}" role="group">${opts.map(([v,l])=>`<button type="button" data-v="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>`}
+function syncSettings(){
+  document.querySelectorAll("#fThemes .tile").forEach(b=>b.setAttribute("aria-pressed",b.dataset.theme===pref("theme")));
+  document.querySelectorAll("#fVbgs .tile").forEach(b=>b.setAttribute("aria-pressed",b.dataset.vbg===(pref("vbg")||"dark")));
+  document.querySelectorAll("#fTone button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===(pref("tone")||"auto")))}
 function importTheme(file){file.text().then(txt=>{
   const j=JSON.parse(txt),list=j.format==="vconte-theme-set"?j.themes:[j],hex=/^#[0-9a-f]{6}$/i,cu=customThemes();let last=null;
   for(const x of list){const l=THEME_KEYS.map(k=>x.light?.app?.[k]),d=THEME_KEYS.map(k=>x.dark?.app?.[k]);
     if(![...l,...d].every(v=>hex.test(v||"")))continue;
     const th={id:"x:"+x.id,name:x.name||x.id,p:(x.palette||[]).filter(v=>hex.test(v)),l,d};const i=cu.findIndex(y=>y.id===th.id);if(i<0)cu.push(th);else cu[i]=th;last=th.id}
   if(!last)return toast("テーマのファイルではありません");
-  pref("themes-custom",JSON.stringify(cu));setTheme(last);if($("fTheme")){$("fTheme").innerHTML=themeOpts(last);syncThemeForm()}toast("テーマを読み込みました");
+  pref("themes-custom",JSON.stringify(cu));if($("fThemes"))$("fThemes").innerHTML=themeTiles();setTheme(last);toast("テーマを読み込みました");
 }).catch(()=>toast("テーマのファイルではありません"))}
-document.addEventListener("change",e=>{const id=e.target.id;
-  if(id==="fTheme")syncThemeForm();
-  else if(id==="fTone"){pref("tone",e.target.value);setTheme(pref("theme"))}});
-document.addEventListener("click",e=>{if(e.target.id!=="fThemeFile")return;const i=document.createElement("input");i.type="file";i.accept=".json,application/json";i.onchange=()=>i.files[0]&&importTheme(i.files[0]);i.click()});
-function setVBg(b){["dark","blur","light"].forEach(x=>$("viewer").classList.toggle("bg-"+x,x===b&&x!=="dark"));document.querySelectorAll(".swatch").forEach(w=>w.classList.toggle("on",w.dataset.bg===b));pref("vbg",b)}
+function setVBg(b){["dark","blur","light"].forEach(x=>$("viewer").classList.toggle("bg-"+x,x===b&&x!=="dark"));document.querySelectorAll(".swatch").forEach(w=>w.classList.toggle("on",w.dataset.bg===b));pref("vbg",b);syncSettings()}
 document.querySelectorAll(".swatch").forEach(w=>w.onclick=()=>setVBg(w.dataset.bg));
 setTheme(pref("theme"));setVBg(pref("vbg")||"dark");
-$("setBtn").onclick=()=>{const cur=pref("theme"),tone=pref("tone")||"auto",bg=pref("vbg")||"dark";closeNav();
-  formDlg("設定",`<label for="fTheme" style="font-size:12px;color:var(--muted)">カラーテーマ</label><select id="fTheme">${themeOpts(cur)}</select><div class="pal" id="fPal"${findTheme(cur)?"":" hidden"}>${palHtml(cur)}</div>
-  <label for="fTone" id="fToneL" style="font-size:12px;color:var(--muted)"${findTheme(cur)?"":" hidden"}>明るさ</label><select id="fTone"${findTheme(cur)?"":" hidden"}>${[["auto","自動"],["light","ライト"],["dark","ダーク"]].map(([v,l])=>`<option value="${v}"${v===tone?" selected":""}>${l}</option>`).join("")}</select><button type="button" class="btn" id="fThemeFile">テーマを読み込む（.json）</button>
-  <label for="fVbg" style="font-size:12px;color:var(--muted)">ビューアの背景</label><select id="fVbg">${[["dark","黒"],["blur","透明ぼかし"],["light","ライトグレー"]].map(([v,l])=>`<option value="${v}"${v===bg?" selected":""}>${l}</option>`).join("")}</select>
-  ${dbx.isConfigured()?`<label style="font-size:12px;color:var(--muted)">Dropbox</label><button type="button" class="btn" id="fDbx">${dbxMode?"切断":"接続"}</button>`:""}`,"閉じる",()=>{},
-  ()=>{$("fTheme").onchange=e=>setTheme(e.target.value);$("fVbg").onchange=e=>setVBg(e.target.value);$("dCancel").hidden=true;
+const H=t=>`<div class="sh">${t}</div>`;
+$("setBtn").onclick=()=>{closeNav();
+  formDlg("設定",`${H("カラーテーマ")}${seg("fTone",[["auto","自動"],["light","ライト"],["dark","ダーク"]],pref("tone")||"auto")}<div class="tiles" id="fThemes">${themeTiles()}</div><button type="button" class="btn" id="fThemeFile">テーマを読み込む（.json）</button>
+  ${H("ビューアの背景")}<div class="tiles" id="fVbgs">${VBGS.map(([v,l,sw])=>tile("vbg",v,l,sw)).join("")}</div>
+  ${dbx.isConfigured()?`${H("Dropbox")}<button type="button" class="btn" id="fDbx">${dbxMode?"切断":"接続"}</button>`:""}`,"閉じる",()=>{},
+  ()=>{$("dlgForm").classList.add("set");syncSettings();$("dCancel").hidden=true;
+    $("fThemes").onclick=e=>{const b=e.target.closest(".tile");if(b)setTheme(b.dataset.theme)};
+    $("fVbgs").onclick=e=>{const b=e.target.closest(".tile");if(b)setVBg(b.dataset.vbg)};
+    $("fTone").onclick=e=>{const b=e.target.closest("button");if(b){pref("tone",b.dataset.v);setTheme(pref("theme"))}};
+    $("fThemeFile").onclick=()=>{const i=document.createElement("input");i.type="file";i.accept=".json,application/json";i.onchange=()=>i.files[0]&&importTheme(i.files[0]);i.click()};
     const b=$("fDbx");if(b)b.onclick=async()=>{if(!dbxMode)return dbx.startAuth();flushSave();await dbx.disconnect();location.reload()}})};
 const TEXT=["txt","md","text","csv","json"];
 async function readText(it){
@@ -387,7 +391,7 @@ $("scrim").onclick=closeNav;
 
 /* dialogs */
 function formDlg(title,html,ok,fn,init){
-  const f=$("dlgForm");f.innerHTML=`<h4></h4>${html}<div class="row"><button type="button" class="btn" id="dCancel">キャンセル</button><button class="btn pri">${ok}</button></div>`;
+  const f=$("dlgForm");f.className="";f.innerHTML=`<h4></h4>${html}<div class="row"><button type="button" class="btn" id="dCancel">キャンセル</button><button class="btn pri">${ok}</button></div>`;
   f.querySelector("h4").textContent=title;$("dlg").hidden=false;init&&init();f.querySelector("input:not([hidden]),select")?.focus();
   $("dCancel").onclick=()=>$("dlg").hidden=true;
   f.onsubmit=e=>{e.preventDefault();$("dlg").hidden=true;fn()};

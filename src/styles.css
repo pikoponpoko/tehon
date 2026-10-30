@@ -18,11 +18,6 @@ img{max-width:100%}
 .fv .hi{width:15px;height:15px}
 .vbtn .hi{width:16px;height:16px}
 .nav .hi{width:13px;height:13px;color:var(--fav)}
-:root[data-tt="light"]{--bg:#f4f6f9;--surface:#ffffff;--line:#dde2ea;--fg:#141a24;--muted:#5d6878;--accent:#2457e6;--accent-soft:#e3eaff;--fav:#e8484f;--accent-ink:var(--accent);--on-accent:#fff;color-scheme:light}
-:root[data-tt="dark"]{--bg:#0e1117;--surface:#161b24;--line:#283041;--fg:#e7ebf2;--muted:#8c97a8;--accent:#6d93ff;--accent-soft:#1d2a4d;--fav:#ff6b70;--accent-ink:var(--accent);--on-accent:#fff;color-scheme:dark}
-:root[data-tt="navy"]{--bg:#0b1730;--surface:#12213f;--line:#22365f;--fg:#e8eefc;--muted:#8fa3c8;--accent:#5ea0ff;--accent-soft:#1a3260;--fav:#ff6b81;--accent-ink:var(--accent);--on-accent:#fff;color-scheme:dark}
-:root[data-tt="graphite"]{--bg:#18181a;--surface:#222225;--line:#36363c;--fg:#ececee;--muted:#9a9aa2;--accent:#3cc6b8;--accent-soft:#183b38;--fav:#ff6b70;--accent-ink:var(--accent);--on-accent:#fff;color-scheme:dark}
-:root[data-tt="white"]{--bg:#ffffff;--surface:#ffffff;--line:#e4e6ea;--fg:#101114;--muted:#6b7280;--accent:#101114;--accent-soft:#eef0f3;--fav:#e8484f;--accent-ink:var(--accent);--on-accent:#fff;color-scheme:light}
 .viewer{--vbg:#06080c;--vfg:#e7ebf2;--vline:rgba(255,255,255,.2);--vpanel:#11151d}
 .viewer.bg-blur{--vbg:rgba(8,11,18,.5);--vfg:#ffffff;--vline:rgba(255,255,255,.3);--vpanel:rgba(8,11,18,.55);-webkit-backdrop-filter:blur(22px) saturate(1.2);backdrop-filter:blur(22px) saturate(1.2)}
 .viewer.bg-light{--vbg:#e9ecf1;--vfg:#141a24;--vline:rgba(20,26,36,.2);--vpanel:#ffffff}
@@ -32,7 +27,6 @@ img{max-width:100%}
 .sw-dark{background:#06080c}.sw-blur{background:linear-gradient(135deg,rgba(255,255,255,.7),rgba(120,130,150,.5))}.sw-light{background:#e9ecf1}
 .swatches{display:flex;gap:6px;align-items:center;padding:0 4px}
 .setbtn{margin-top:auto}
-.pal{display:flex;height:12px;border-radius:3px;overflow:hidden;margin-top:-4px}.pal i{flex:1}
 /* scrollbars: hidden at rest, shown while scrolling or hovering; gutter reserved so layout never shifts */
 .sb{scrollbar-width:thin;scrollbar-color:transparent transparent;scrollbar-gutter:stable;transition:scrollbar-color .3s}
 .sb:hover,.sb.show{scrollbar-color:color-mix(in srgb,var(--muted) 55%,transparent) transparent}
@@ -120,6 +114,20 @@ select.btn{padding-right:8px}
 .dlg form{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;width:min(380px,100%);display:flex;flex-direction:column;gap:10px}
 .dlg h4{margin:0;font-size:15px}
 .dlg input,.dlg select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 10px}
+.dlg form.set{width:min(440px,100%);max-height:calc(100dvh - 32px);overflow:auto}.dlg form.set>*{flex:none}
+.dlg .sh{font-size:12px;color:var(--muted);margin-top:4px}
+.segc{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.segc button{all:unset;flex:1;text-align:center;padding:6px 0;font-size:13px;cursor:pointer}
+.segc button+button{border-left:1px solid var(--line)}
+.segc button[aria-pressed="true"]{background:var(--fg);color:var(--surface)}
+.segc button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:3px}
+.tile{all:unset;box-sizing:border-box;position:relative;display:flex;align-items:center;justify-content:center;min-height:46px;border-radius:9px;overflow:hidden;cursor:pointer;border:1px solid var(--line)}
+.tile .sw{position:absolute;inset:0;display:flex}.tile .sw i{flex:1}
+.tile .tn{position:relative;background:var(--surface);color:var(--fg);border-radius:5px;padding:2px 6px;font-size:11px;font-weight:500;line-height:1.3;text-align:center;max-width:calc(100% - 10px)}
+.tile[aria-pressed="true"]{outline:2px solid var(--fg);outline-offset:2px}
+.tile[aria-pressed="true"] .tn{font-weight:700}
+.tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .dlg .row{display:flex;gap:8px;justify-content:flex-end}
 .dlg .tags{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}.dlg .tags:empty{display:none}.dlg .tag{border-color:var(--line)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;z-index:40}
