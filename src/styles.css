@@ -104,7 +104,7 @@ select.btn{padding-right:8px}
 .urlth{aspect-ratio:1;display:flex;flex-direction:column;justify-content:flex-end;padding:12px;gap:4px;background:var(--accent-soft);color:var(--accent-ink);font-size:12px;word-break:break-all}
 .urlth b{font-size:13px;color:var(--fg)}
 /* viewer */
-.viewer{position:fixed;inset:0;background:var(--vbg);z-index:20;display:grid;grid-template-rows:auto 1fr auto;color:var(--vfg)}
+.viewer{position:fixed;inset:0;background:var(--vbg);z-index:20;display:grid;grid-template-rows:auto minmax(0,1fr) auto;grid-template-columns:minmax(0,1fr);color:var(--vfg)}
 .vbar{display:flex;gap:8px;align-items:center;padding-top:calc(10px + env(safe-area-inset-top,0px));padding-bottom:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .vbar .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
 .vbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;padding:6px 10px;border-radius:6px;border:1px solid var(--vline);font-size:13px;font-family:var(--mono)}
