@@ -240,14 +240,31 @@ export async function tempLink(id: string): Promise<string> {
   return (await rpc("files/get_temporary_link", { path: id })).link;
 }
 
-export async function readText(id: string, max = 2e6): Promise<{ text: string; enc: string; truncated: boolean }> {
-  const { blob } = await download(id);
+export async function readText(id: string, max = 2e6): Promise<{ text: string; enc: string; truncated: boolean; rev?: string }> {
+  const { blob, meta } = await download(id);
   const truncated = blob.size > max;
   const buf = await blob.slice(0, max).arrayBuffer();
   try {
-    return { text: new TextDecoder("utf-8", { fatal: true }).decode(buf), enc: "UTF-8", truncated };
+    return { text: new TextDecoder("utf-8", { fatal: true }).decode(buf), enc: "UTF-8", truncated, rev: meta.rev };
   } catch {
-    return { text: new TextDecoder("shift_jis").decode(buf), enc: "Shift_JIS", truncated };
+    return { text: new TextDecoder("shift_jis").decode(buf), enc: "Shift_JIS", truncated, rev: meta.rev };
+  }
+}
+
+export class ConflictError extends Error {}
+
+/** Overwrites a UTF-8 text file only if it is still at `rev`; otherwise throws ConflictError and leaves Dropbox untouched. */
+export async function writeText(path: string, text: string, rev: string): Promise<FileMeta> {
+  try {
+    const r = await call(CONTENT + "files/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream", "Dropbox-API-Arg": argHeader({ path, mode: { ".tag": "update", update: rev }, autorename: false, mute: true }) },
+      body: new TextEncoder().encode(text),
+    });
+    return r.json();
+  } catch (e) {
+    if (e instanceof DropboxError && e.status === 409 && e.summary.startsWith("path/conflict")) throw new ConflictError();
+    throw e;
   }
 }
 
