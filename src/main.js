@@ -83,7 +83,11 @@ function setThumb(id,b){const u=b?URL.createObjectURL(b):BLANK;thumbCache.set(id
 function pumpThumbs(){
   while(thumbQ.length&&thumbBusy<6){
     const fs=thumbQ.splice(0,10);thumbBusy++;
-    dbx.thumbnails(fs,setThumb).catch(()=>fs.forEach(f=>{if(!thumbCache.has(f.id))thumbAsked.delete(f.id)})).finally(()=>{thumbBusy--;pumpThumbs()});
+    dbx.thumbnails(fs,setThumb).catch(()=>{
+      // A failed request is tried again twice, a few seconds apart, so no card is left without its thumbnail.
+      const left=fs.filter(f=>!thumbCache.has(f.id));left.forEach(f=>f.tries=(f.tries||0)+1);
+      const again=left.filter(f=>f.tries<3);left.filter(f=>f.tries>=3).forEach(f=>thumbAsked.delete(f.id));
+      if(again.length)setTimeout(()=>{thumbQ.push(...again);pumpThumbs()},3000*again[0].tries)}).finally(()=>{thumbBusy--;pumpThumbs()});
   }
 }
 let thumbIO;
