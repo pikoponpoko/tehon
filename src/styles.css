@@ -77,6 +77,8 @@ select.btn{padding-right:8px}
 .selbar b{color:var(--accent);font-family:var(--mono);font-variant-numeric:tabular-nums}
 .grid-wrap{flex:1;min-height:0;overflow-y:auto;padding-block:14px;padding-left:16px;padding-right:max(16px,env(safe-area-inset-right,0px))}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--cell,170px),1fr));gap:10px}
+.grid.cols{grid-template-columns:repeat(var(--cols),minmax(0,1fr))}
+.grid.fall.cols{columns:var(--cols)}
 .grid.fall{display:block;columns:var(--cell,170px);column-gap:10px}
 .grid.fall .card{break-inside:avoid;margin-bottom:10px;display:block}
 .grid.fall .card .th{aspect-ratio:auto;height:auto}

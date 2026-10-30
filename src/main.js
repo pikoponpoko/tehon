@@ -239,7 +239,7 @@ function useFocus(){if(st.sel.size)return true;const i=curIdx();if(i==null)retur
 function dropImp(){if(!st.imp)return;st.imp=false;st.sel.clear();renderGrid();renderSel();if(st.anchor!=null)focusCard(st.anchor)}
 function rangeTo(i){if(st.anchor==null)st.anchor=curIdx()??i;st.sel.clear();const a=Math.min(st.anchor,i),b=Math.max(st.anchor,i);for(let k=a;k<=b;k++)st.sel.add(list[k].id);renderGrid();renderSel();focusCard(i)}
 function keysDlg(){const m=MAC?"⌘":"Ctrl";
-  const K=[["一覧",[["← → ↑ ↓","移動"],["Shift + ← → ↑ ↓","範囲選択"],["Home / End","先頭 / 末尾"],["Enter","開く"],["Space","選択"],[m+" + A","すべて選択"],["Esc","選択解除"],["F","お気に入り"],["T","タグを追加"],["M","移動"],["Delete","ゴミ箱へ"],["/ , "+m+" + F","検索"],["N","追加"],["+ / -","サムネイルサイズ"],["S","サイドバー"],["G","グリッド / ウォーターフォール"]]],
+  const K=[["一覧",[["← → ↑ ↓","移動"],["Shift + ← → ↑ ↓","範囲選択"],["Home / End","先頭 / 末尾"],["Enter","開く"],["Space","選択"],[m+" + A","すべて選択"],["Esc","選択解除"],["F","お気に入り"],["T","タグを追加"],["M","移動"],["Delete","ゴミ箱へ"],["/ , "+m+" + F","検索"],["N","追加"],["+ / -","列数"],["1〜9 / 0","列数を指定 / 自動"],["S","サイドバー"],["G","グリッド / ウォーターフォール"]]],
     ["ビューア",[["← →","前 / 次"],["+ / - / 0","拡大 / 縮小 / 全体"],["1","100%"],["Space","再生 / 停止"],["F","お気に入り"],["T","タグ"],["Delete","ゴミ箱へ"],["Esc","閉じる"]]]];
   formDlg("キーボードショートカット",K.map(([h,r])=>`<div class="keys"><b>${h}</b>${r.map(([k,l])=>`<span>${l}</span><kbd>${esc(k)}</kbd>`).join("")}</div>`).join(""),"閉じる",()=>{},()=>{$("dCancel").hidden=true;$("dlgForm").querySelector(".pri").focus()})}
 document.addEventListener("keydown",e=>{
@@ -261,7 +261,8 @@ document.addEventListener("keydown",e=>{
   if(k==="n"){$("addBtn").click();return}
   if(k==="s"){toggleSide();return}
   if(k==="g"){setLayout(st.layout==="fall"?"grid":"fall");return}
-  if(k==="+"||k==="="||k==="-"){const s=$("size");s.value=+s.value+(k==="-"?-20:20);s.oninput({target:s});return}
+  if(k==="+"||k==="="||k==="-"){setCols(curCols()+(k==="-"?-1:1));return}
+  if(/^[0-9]$/.test(k)){setCols(+k||null);return}
   if(k==="Enter"&&i!=null){e.preventDefault();openViewer(i);return}
   if(k===" "&&i!=null){e.preventDefault();const id=list[i].id;st.sel.has(id)?st.sel.delete(id):st.sel.add(id);st.anchor=i;renderGrid();renderSel();focusCard(i);return}
   if(k==="Delete"||k==="Backspace"){if(useFocus()){e.preventDefault();trashSel();if(!tr){st.imp=false;if(i!=null)focusCard(i)}}return}
@@ -278,7 +279,12 @@ $("shuffle").onclick=()=>{st.rseed=(Date.now()^Math.random()*1e9)|0;renderGrid()
 function setLayout(l){st.layout=l;$("grid").classList.toggle("fall",l==="fall");$("lGrid").classList.toggle("on",l==="grid");$("lFall").classList.toggle("on",l==="fall");try{localStorage.setItem("tehon-layout",l)}catch(e){}}
 $("lGrid").onclick=()=>setLayout("grid");$("lFall").onclick=()=>setLayout("fall");
 try{const l=localStorage.getItem("tehon-layout");if(l)setLayout(l)}catch(e){}
-$("size").oninput=e=>{$("grid").style.setProperty("--cell",e.target.value+"px")};
+// Column count; null follows the window width.
+const curCols=()=>{const g=$("grid");if(g.style.getPropertyValue("--cols"))return +g.style.getPropertyValue("--cols");const cs=getComputedStyle(g),cell=parseFloat(cs.getPropertyValue("--cell"))||170,gap=parseFloat(cs.columnGap)||10;return Math.max(1,Math.floor((g.clientWidth+gap)/(cell+gap)))};
+function setCols(n){const g=$("grid");n=n&&Math.max(1,Math.min(12,n));if(n)g.style.setProperty("--cols",n);else g.style.removeProperty("--cols");g.classList.toggle("cols",!!n);$("size").value=n||curCols();try{localStorage.setItem("tehon-cols",n||"")}catch(e){}}
+$("size").oninput=e=>setCols(+e.target.value);
+try{const n=+localStorage.getItem("tehon-cols");setCols(n||null)}catch(e){setCols(null)}
+addEventListener("resize",()=>{if(!$("grid").classList.contains("cols"))$("size").value=curCols()});
 $("selBtn").onclick=()=>{st.selecting=!st.selecting;if(!st.selecting)st.sel.clear();renderGrid();renderSel()};
 $("bAll").onclick=()=>{list.forEach(i=>st.sel.add(i.id));renderGrid();renderSel()};
 $("bNone").onclick=()=>{st.sel.clear();st.selecting=false;renderGrid();renderSel()};
