@@ -234,12 +234,13 @@ export async function listAll(onPage?: (n: number) => void): Promise<FileMeta[]>
 
 export const THUMB_EXT = ["jpg", "jpeg", "png", "tiff", "tif", "gif", "webp", "ppm", "bmp"];
 
-/* ---------- local cache of thumbnails and text previews (IndexedDB "tehon-cache") ----------
-   Entries are { rev, value } keyed by file id (text previews: "text:" + id) and used only while rev still matches. */
+/* ---------- local cache of thumbnails and text previews (IndexedDB "tehon-cache2") ----------
+   Entries are { rev, value } keyed by file id (text previews: "text:" + id) and used only while rev still matches.
+   Thumbnails are stored as ArrayBuffer, not Blob: Safari can lose Blobs kept in IndexedDB. */
 const CACHE_STORE = "c";
 let cacheDb: Promise<IDBDatabase> | null = null;
 const cacheStore = async (mode: IDBTransactionMode) =>
-  (await (cacheDb ??= open("tehon-cache", CACHE_STORE).catch(e => ((cacheDb = null), Promise.reject(e))))).transaction(CACHE_STORE, mode).objectStore(CACHE_STORE);
+  (await (cacheDb ??= open("tehon-cache2", CACHE_STORE).catch(e => ((cacheDb = null), Promise.reject(e))))).transaction(CACHE_STORE, mode).objectStore(CACHE_STORE);
 const done = (t: IDBTransaction) => new Promise<void>((res, rej) => ((t.oncomplete = () => res()), (t.onerror = () => rej(t.error))));
 
 export async function cacheGet<T>(keys: { key: string; rev?: string }[]): Promise<Map<string, T>> {
@@ -274,11 +275,21 @@ export async function cachePrune(keep: Set<string>) {
   await done(s.transaction);
 }
 
-/** Up to 25 per request; cached ones come from IndexedDB without a request. `each` is called as soon as a result is known.
+try {
+  indexedDB.deleteDatabase("tehon-cache");
+} catch {}
+
+/** Up to 25 per request; cached ones (unless `fresh`) come from IndexedDB without a request. `each` is called as soon as a result is known.
     Returns id → JPEG blob, or null when Dropbox can't thumbnail it. */
-export async function thumbnails(files: { id: string; rev?: string }[], each?: (id: string, b: Blob | null) => void): Promise<Map<string, Blob | null>> {
-  const m = await cacheGet<Blob | null>(files.map(f => ({ key: f.id, rev: f.rev }))).catch(() => new Map<string, Blob | null>());
-  m.forEach((b, id) => each?.(id, b));
+export async function thumbnails(files: { id: string; rev?: string; fresh?: boolean }[], each?: (id: string, b: Blob | null) => void): Promise<Map<string, Blob | null>> {
+  const m = new Map<string, Blob | null>();
+  const saved = await cacheGet<ArrayBuffer>(files.filter(f => !f.fresh).map(f => ({ key: f.id, rev: f.rev }))).catch(() => new Map<string, ArrayBuffer>());
+  saved.forEach((buf, id) => {
+    if (!(buf instanceof ArrayBuffer) || !buf.byteLength) return;
+    const b = new Blob([buf], { type: "image/jpeg" });
+    m.set(id, b);
+    each?.(id, b);
+  });
   const miss = files.filter(f => !m.has(f.id));
   for (let i = 0; i < miss.length; i += 25) {
     const part = miss.slice(i, i + 25);
@@ -288,12 +299,15 @@ export async function thumbnails(files: { id: string; rev?: string }[], each?: (
       body: JSON.stringify({ entries: part.map(f => ({ path: f.id, format: "jpeg", size: "w480h320", mode: "fitone_bestfit" })) }),
     });
     const j = await r.json();
-    const got = part.map((f, k) => {
+    const got: { key: string; rev?: string; value: ArrayBuffer }[] = [];
+    part.forEach((f, k) => {
       const e = j.entries[k];
-      const b = e[".tag"] === "success" ? new Blob([Uint8Array.from(atob(e.thumbnail), c => c.charCodeAt(0))], { type: "image/jpeg" }) : null;
+      // Only successes are kept: a failure may be temporary, so it is asked again next time.
+      const buf = e?.[".tag"] === "success" ? Uint8Array.from(atob(e.thumbnail), c => c.charCodeAt(0)).buffer : null;
+      const b = buf && new Blob([buf], { type: "image/jpeg" });
       m.set(f.id, b);
       each?.(f.id, b);
-      return { key: f.id, rev: f.rev, value: b };
+      if (buf) got.push({ key: f.id, rev: f.rev, value: buf });
     });
     cacheSet(got).catch(() => {});
   }
