@@ -239,7 +239,7 @@ function useFocus(){if(st.sel.size)return true;const i=curIdx();if(i==null)retur
 function dropImp(){if(!st.imp)return;st.imp=false;st.sel.clear();renderGrid();renderSel();if(st.anchor!=null)focusCard(st.anchor)}
 function rangeTo(i){if(st.anchor==null)st.anchor=curIdx()??i;st.sel.clear();const a=Math.min(st.anchor,i),b=Math.max(st.anchor,i);for(let k=a;k<=b;k++)st.sel.add(list[k].id);renderGrid();renderSel();focusCard(i)}
 function keysDlg(){const m=MAC?"⌘":"Ctrl";
-  const K=[["一覧",[["← → ↑ ↓","移動"],["Shift + ← → ↑ ↓","範囲選択"],["Home / End","先頭 / 末尾"],["Enter","開く"],["Space","選択"],[m+" + A","すべて選択"],["Esc","選択解除"],["F","お気に入り"],["T","タグを追加"],["M","移動"],["Delete","ゴミ箱へ"],["/ , "+m+" + F","検索"],["N","追加"],["+ / -","サムネイルサイズ"],["G","グリッド / ウォーターフォール"]]],
+  const K=[["一覧",[["← → ↑ ↓","移動"],["Shift + ← → ↑ ↓","範囲選択"],["Home / End","先頭 / 末尾"],["Enter","開く"],["Space","選択"],[m+" + A","すべて選択"],["Esc","選択解除"],["F","お気に入り"],["T","タグを追加"],["M","移動"],["Delete","ゴミ箱へ"],["/ , "+m+" + F","検索"],["N","追加"],["+ / -","サムネイルサイズ"],["S","サイドバー"],["G","グリッド / ウォーターフォール"]]],
     ["ビューア",[["← →","前 / 次"],["+ / - / 0","拡大 / 縮小 / 全体"],["1","100%"],["Space","再生 / 停止"],["F","お気に入り"],["T","タグ"],["Delete","ゴミ箱へ"],["Esc","閉じる"]]]];
   formDlg("キーボードショートカット",K.map(([h,r])=>`<div class="keys"><b>${h}</b>${r.map(([k,l])=>`<span>${l}</span><kbd>${esc(k)}</kbd>`).join("")}</div>`).join(""),"閉じる",()=>{},()=>{$("dCancel").hidden=true;$("dlgForm").querySelector(".pri").focus()})}
 document.addEventListener("keydown",e=>{
@@ -259,6 +259,7 @@ document.addEventListener("keydown",e=>{
   if(k==="/"){e.preventDefault();$("q").focus();return}
   if(k==="?"){keysDlg();return}
   if(k==="n"){$("addBtn").click();return}
+  if(k==="s"){toggleSide();return}
   if(k==="g"){setLayout(st.layout==="fall"?"grid":"fall");return}
   if(k==="+"||k==="="||k==="-"){const s=$("size");s.value=+s.value+(k==="-"?-20:20);s.oninput({target:s});return}
   if(k==="Enter"&&i!=null){e.preventDefault();openViewer(i);return}
@@ -391,7 +392,10 @@ addEventListener("dragleave",()=>{if(--dc<=0){dc=0;$("drop").hidden=true}});
 addEventListener("dragover",e=>e.preventDefault());
 addEventListener("drop",e=>{e.preventDefault();dc=0;$("drop").hidden=true;if(e.dataTransfer.files.length)addFiles([...e.dataTransfer.files])});
 const closeNav=()=>$("app").classList.remove("nav-open");
-$("menuBtn").onclick=()=>$("app").classList.add("nav-open");
+const wide=matchMedia("(min-width:761px)");
+function toggleSide(){if(!wide.matches)return $("app").classList.toggle("nav-open");const c=$("app").classList.toggle("collapsed");try{localStorage.setItem("tehon-side",c?"0":"1")}catch(e){}}
+$("menuBtn").onclick=toggleSide;
+try{if(localStorage.getItem("tehon-side")==="0")$("app").classList.add("collapsed")}catch(e){}
 $("scrim").onclick=closeNav;
 
 /* dialogs */

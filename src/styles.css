@@ -64,6 +64,7 @@ aside{background:var(--surface);border-right:1px solid var(--line);overflow-y:au
 main{display:flex;flex-direction:column;min-width:0;min-height:0;height:100%}
 .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-block:10px;padding-left:16px;padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line);background:var(--surface)}
 .bar .menu{display:none}
+@media (min-width:761px){.bar .menu{display:inline-flex}.app.collapsed{grid-template-columns:1fr}.app.collapsed aside,.app.collapsed .scrim{display:none}}
 .search{flex:1;min-width:140px;display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:0 10px}
 .search input{border:0;background:none;outline:none;padding:7px 0;width:100%}
 .btn{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:13px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
