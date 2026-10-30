@@ -376,3 +376,13 @@ export async function createFolders(paths: string[]) {
 export async function remove(path: string) {
   await rpc("files/delete_v2", { path });
 }
+
+/** Tags etc. carried over from Eagle, keyed by file path (/.tehon/eagle-manifest.json). Device data overrides it. */
+export interface EagleManifest { files: Record<string, { tags: string[]; favorite: boolean; trashed: boolean; addedAt?: number }>; urls: Omit<UrlMeta, "updatedAt">[] }
+export async function loadEagleManifest(): Promise<EagleManifest | null> {
+  try {
+    return await readJson(META_DIR + "/eagle-manifest.json");
+  } catch {
+    return null;
+  }
+}
