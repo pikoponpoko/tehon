@@ -123,6 +123,7 @@ select.btn{padding-right:8px}
 .dlg h4{margin:0;font-size:15px}
 .dlg input,.dlg select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 10px}
 .dlg .row{display:flex;gap:8px;justify-content:flex-end}
+.dlg .tags{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}.dlg .tags:empty{display:none}.dlg .tag{border-color:var(--line)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;z-index:40}
 .drop{position:fixed;inset:0;z-index:25;border:3px dashed var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);pointer-events:none}
 .scrim{display:none}
