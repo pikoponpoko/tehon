@@ -2,6 +2,7 @@ import "./styles.css";
 import * as dbx from "./dropbox";
 import { EAGLE_IMPORT } from "./config";
 import * as eagle from "./eagle";
+import PTHEMES from "./themes.json";
 
 (async()=>{
 const $=id=>document.getElementById(id);
@@ -262,13 +263,46 @@ $("addBtn").onclick=()=>formDlg("追加",`<select id="fKind"><option value="file
 },()=>{$("fKind").onchange=e=>{$("fUrl").hidden=e.target.value!=="url";$("fFolder").hidden=e.target.value==="eagle"}});
 let pendingFolder=null;
 const pref=(k,v)=>{try{if(v===undefined)return localStorage.getItem("tehon-"+k);localStorage.setItem("tehon-"+k,v)}catch(e){return null}};
-function setTheme(t){if(t&&t!=="system")document.documentElement.dataset.tt=t;else delete document.documentElement.dataset.tt;pref("theme",t||"system")}
+/* palette themes come from プリプロ名人 (src/themes.json, scripts/import-themes.mjs); [bg,panel,line,text,muted,accent,danger,lane] per tone */
+const OLD_THEMES=[["light","ライト"],["white","ホワイト"],["dark","ダーク"],["navy","ネイビー"],["graphite","グラファイト"]];
+const THEME_KEYS=["--bg","--panel","--line","--text","--muted","--accent","--danger","--lane"];
+const customThemes=()=>{try{return JSON.parse(pref("themes-custom")||"[]")}catch(e){return[]}};
+const findTheme=t=>[...PTHEMES,...customThemes()].find(x=>x.id===t);
+const lum=h=>{const c=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map(v=>v<=.03928?v/12.92:((v+.055)/1.055)**2.4);return .2126*c[0]+.7152*c[1]+.0722*c[2]};
+const contrast=(a,b)=>{const x=lum(a),y=lum(b);return(Math.max(x,y)+.05)/(Math.min(x,y)+.05)};
+const darkQ=matchMedia("(prefers-color-scheme:dark)");
+const TVARS=["--bg","--surface","--line","--fg","--muted","--accent","--accent-soft","--accent-ink","--on-accent","--fav","color-scheme"];
+function setTheme(t){
+  const r=document.documentElement,P=findTheme(t)||(OLD_THEMES.some(([v])=>v===t)?null:findTheme(t="default"));
+  TVARS.forEach(k=>r.style.removeProperty(k));
+  if(!P)r.dataset.tt=t;
+  else{delete r.dataset.tt;const tone=pref("tone")||"auto",dk=tone==="dark"||tone==="auto"&&darkQ.matches;
+    const[bg,panel,line,text,muted,accent,danger,lane]=dk?P.d:P.l;
+    [bg,panel,line,text,muted,accent,lane,contrast(accent,lane)>=3?accent:text,contrast(text,accent)>contrast(panel,accent)?text:panel,danger,dk?"dark":"light"].forEach((v,i)=>r.style.setProperty(TVARS[i],v))}
+  pref("theme",t)}
+darkQ.addEventListener("change",()=>setTheme(pref("theme")));
+const palHtml=t=>{const P=findTheme(t);if(!P)return"";const c=P.p.length?P.p:[...new Set(P.l)];return c.map(x=>`<i style="background:${x}"></i>`).join("")};
+const themeOpts=cur=>{const o=([v,l])=>`<option value="${v}"${v===cur?" selected":""}>${esc(l)}</option>`,cu=customThemes();
+  return`<optgroup label="プリプロ名人">${PTHEMES.map(x=>o([x.id,x.name])).join("")}</optgroup>${cu.length?`<optgroup label="読み込んだテーマ">${cu.map(x=>o([x.id,x.name])).join("")}</optgroup>`:""}<optgroup label="Tehon">${OLD_THEMES.map(o).join("")}</optgroup>`};
+function syncThemeForm(){const t=pref("theme"),fixed=!findTheme(t);$("fPal").innerHTML=palHtml(t);$("fPal").hidden=fixed;$("fToneL").hidden=$("fTone").hidden=fixed}
+function importTheme(file){file.text().then(txt=>{
+  const j=JSON.parse(txt),list=j.format==="vconte-theme-set"?j.themes:[j],hex=/^#[0-9a-f]{6}$/i,cu=customThemes();let last=null;
+  for(const x of list){const l=THEME_KEYS.map(k=>x.light?.app?.[k]),d=THEME_KEYS.map(k=>x.dark?.app?.[k]);
+    if(![...l,...d].every(v=>hex.test(v||"")))continue;
+    const th={id:"x:"+x.id,name:x.name||x.id,p:(x.palette||[]).filter(v=>hex.test(v)),l,d};const i=cu.findIndex(y=>y.id===th.id);if(i<0)cu.push(th);else cu[i]=th;last=th.id}
+  if(!last)return toast("テーマのファイルではありません");
+  pref("themes-custom",JSON.stringify(cu));setTheme(last);if($("fTheme")){$("fTheme").innerHTML=themeOpts(last);syncThemeForm()}toast("テーマを読み込みました");
+}).catch(()=>toast("テーマのファイルではありません"))}
+document.addEventListener("change",e=>{const id=e.target.id;
+  if(id==="fTheme")syncThemeForm();
+  else if(id==="fTone"){pref("tone",e.target.value);setTheme(pref("theme"))}});
+document.addEventListener("click",e=>{if(e.target.id!=="fThemeFile")return;const i=document.createElement("input");i.type="file";i.accept=".json,application/json";i.onchange=()=>i.files[0]&&importTheme(i.files[0]);i.click()});
 function setVBg(b){["dark","blur","light"].forEach(x=>$("viewer").classList.toggle("bg-"+x,x===b&&x!=="dark"));document.querySelectorAll(".swatch").forEach(w=>w.classList.toggle("on",w.dataset.bg===b));pref("vbg",b)}
 document.querySelectorAll(".swatch").forEach(w=>w.onclick=()=>setVBg(w.dataset.bg));
-setTheme(pref("theme")||"system");setVBg(pref("vbg")||"dark");
-const THEMES=[["system","システム"],["light","ライト"],["white","ホワイト"],["dark","ダーク"],["navy","ネイビー"],["graphite","グラファイト"]];
-$("setBtn").onclick=()=>{const cur=pref("theme")||"system",bg=pref("vbg")||"dark";closeNav();
-  formDlg("設定",`<label for="fTheme" style="font-size:12px;color:var(--muted)">カラーテーマ</label><select id="fTheme">${THEMES.map(([v,l])=>`<option value="${v}"${v===cur?" selected":""}>${l}</option>`).join("")}</select>
+setTheme(pref("theme"));setVBg(pref("vbg")||"dark");
+$("setBtn").onclick=()=>{const cur=pref("theme"),tone=pref("tone")||"auto",bg=pref("vbg")||"dark";closeNav();
+  formDlg("設定",`<label for="fTheme" style="font-size:12px;color:var(--muted)">カラーテーマ</label><select id="fTheme">${themeOpts(cur)}</select><div class="pal" id="fPal"${findTheme(cur)?"":" hidden"}>${palHtml(cur)}</div>
+  <label for="fTone" id="fToneL" style="font-size:12px;color:var(--muted)"${findTheme(cur)?"":" hidden"}>明るさ</label><select id="fTone"${findTheme(cur)?"":" hidden"}>${[["auto","自動"],["light","ライト"],["dark","ダーク"]].map(([v,l])=>`<option value="${v}"${v===tone?" selected":""}>${l}</option>`).join("")}</select><button type="button" class="btn" id="fThemeFile">テーマを読み込む（.json）</button>
   <label for="fVbg" style="font-size:12px;color:var(--muted)">ビューアの背景</label><select id="fVbg">${[["dark","黒"],["blur","透明ぼかし"],["light","ライトグレー"]].map(([v,l])=>`<option value="${v}"${v===bg?" selected":""}>${l}</option>`).join("")}</select>
   ${dbx.isConfigured()?`<label style="font-size:12px;color:var(--muted)">Dropbox</label><button type="button" class="btn" id="fDbx">${dbxMode?"切断":"接続"}</button>`:""}`,"閉じる",()=>{},
   ()=>{$("fTheme").onchange=e=>setTheme(e.target.value);$("fVbg").onchange=e=>setVBg(e.target.value);$("dCancel").hidden=true;
@@ -379,7 +413,7 @@ function loadV(){
   if(it.kind==="text"){useEl(vt);vt.value="";readText(it).then(t=>{if(list[V.i]!==it)return;vt.value=t;vt.readOnly=!!it.readonly;
       $("vState").textContent=it.readonly?(it.enc==="Shift_JIS"&&it.dbx?"Shift_JIS・閲覧のみ":"2MBを超えるため閲覧のみ"):it.enc==="Shift_JIS"?"Shift_JIS":"";$("vReload").hidden=true});
     vt.oninput=()=>{if(it.conflict)return;clearTimeout(vtTimer);$("vState").textContent="編集中";vtTimer=setTimeout(()=>saveText(it,vt.value),600)};return}
-  if(it.kind==="url"){vc.width=800;vc.height=450;vx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue("--accent");vx.fillRect(0,0,800,450);vx.fillStyle="#fff";vx.font="500 28px sans-serif";vx.fillText(it.name,40,200);vx.font="20px monospace";vx.fillText(it.url,40,250);useEl(vc,800,450);return}
+  if(it.kind==="url"){vc.width=800;vc.height=450;vx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue("--accent");vx.fillRect(0,0,800,450);vx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue("--on-accent");vx.font="500 28px sans-serif";vx.fillText(it.name,40,200);vx.font="20px monospace";vx.fillText(it.url,40,250);useEl(vc,800,450);return}
   if(it.dbx){
     const show=src=>{if(list[V.i]!==it||$("viewer").hidden)return;
       if(it.kind==="video"){V.video=vv;vv.onloadedmetadata=()=>{useEl(vv,vv.videoWidth,vv.videoHeight);vv.play()};vv.onerror=()=>toast("この動画形式はブラウザで再生できません");vv.src=src}
