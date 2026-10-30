@@ -9,7 +9,7 @@ const $=id=>document.getElementById(id);
 let eagleMode=false;
 // #eagle opens the importer on the public build too, for the one-off migration of the Eagle libraries.
 const EAGLE=EAGLE_IMPORT||location.hash==="#eagle";
-let dbxMode=false,own=null;
+let dbxMode=false,dbxPending=false,own=null;
 const HEART=`<svg class="hi" viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
 const favBtn=b=>{b.firstChild.insertAdjacentHTML("beforebegin",HEART);return b};
 let FOLDERS=["キャラクター/表情","キャラクター/ポーズ","キャラクター/手","背景/屋内","背景/屋外","配色","UI","動き","メモ"];
@@ -21,6 +21,9 @@ const NAMES={"キャラクター/表情":["笑顔","驚き","怒り","泣き顔"
 const urls=[["https://www.artstation.com/","ArtStation"],["https://www.pinterest.com/","Pinterest"],["https://sketchfab.com/","Sketchfab"]];
 const now=Date.parse("2026-10-30T12:00:00Z");
 let items=[];
+// ?demo fills the library with generated samples for testing; otherwise the app starts empty.
+const DEMO=new URLSearchParams(location.search).has("demo");
+if(DEMO){
 for(let i=0;i<72;i++){
   const folder=FOLDERS[i%8];
   const kind=folder==="動き"?(i%2?"gif":"video"):(i%13===5?"url":"image");
@@ -38,8 +41,9 @@ for(let i=0;i<72;i++){
  ["配色ルール.txt","夕景\n空：橙→紫のグラデーション\n影：青紫寄り、彩度は落とさない\n\n夜\n街灯の色を主光源にする"],
  ["参考リンクまとめ.txt","歩きのサイクル：8コマ／2コマ打ち\n走り：6コマ\n\nあとで見る\n・水しぶきの作画\n・炎の形の変化"],
  ["アイデア.txt","雨上がりの交差点で、水たまりに映る信号だけが動くショット"]].forEach(([n,t],j)=>items.push({id:"id:memo"+j,name:n,folder:"メモ",kind:"text",text:t,tags:j===1?["配色"]:["アニメーション"],favorite:j===3,url:null,w:0,h:0,addedAt:now-j*9e6-2e6,trashed:false}));
-// persisted per-viewer edits (demo only)
-const KEY="tehon-demo-v1";
+}else{FOLDERS=[];TAGS.length=0}
+// persisted per-viewer edits while not connected to Dropbox
+const KEY=DEMO?"tehon-demo-v1":"tehon-local-v1";
 try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s){const m=new Map(s.map(x=>[x.id,x]));items.forEach(it=>{const x=m.get(it.id);if(x){it.tags=x.tags;it.favorite=x.favorite;it.folder=x.folder;it.trashed=x.trashed;if(x.text!=null)it.text=x.text}});s.filter(x=>x.extra).forEach(x=>items.push(x))}}catch(e){}
 const save=()=>{if(eagleMode)return;if(dbxMode)return dbxSave();try{localStorage.setItem(KEY,JSON.stringify(items.map(it=>it.extra?{...it,blobUrl:null}:{id:it.id,tags:it.tags,favorite:it.favorite,folder:it.folder,trashed:it.trashed,text:it.kind==="text"?it.text:undefined})))}catch(e){}};
 
@@ -121,6 +125,7 @@ function kindOf(ext){return ext==="gif"?"gif":VID_EXT.includes(ext)?"video":TXT_
 const metaOf=it=>it.kind==="url"?{name:it.name,url:it.url,folder:it.folder,tags:it.tags,favorite:it.favorite,trashed:it.trashed,addedAt:it.addedAt}:{tags:it.tags,favorite:it.favorite,trashed:it.trashed};
 const snap=new Map();let saveT=null;
 function dbxSave(){
+  if(!own)return;
   const t=Date.now();let ch=false;
   for(const it of items){const m=metaOf(it),j=JSON.stringify(m);if(snap.get(it.id)===j)continue;snap.set(it.id,j);
     if(it.kind==="url")own.urls[it.key]={...m,updatedAt:t};else own.items[it.id]={...m,updatedAt:t};ch=true}
@@ -138,7 +143,15 @@ function dbxItem(e,m){
     tags:m?.tags||[],favorite:!!m?.favorite,trashed:!!m?.trashed,url:null,w:d?.width||0,h:d?.height||0,
     addedAt:Date.parse(e.client_modified||e.server_modified||"")||0};
 }
-async function loadDropbox(){
+// Last Dropbox listing, shown at startup while the fresh listing loads.
+const CACHE="tehon-dbx-cache";
+function loadCache(){
+  try{const c=JSON.parse(localStorage.getItem(CACHE)||"null");if(!c)return false;
+    dbxMode=true;items=c.items;FOLDERS=c.folders;TAGS.length=0;TAGS.push(...new Set(items.flatMap(i=>i.tags)));
+    snap.clear();items.forEach(it=>snap.set(it.id,JSON.stringify(metaOf(it))));return true}catch(e){return false}
+}
+const saveCache=()=>{try{localStorage.setItem(CACHE,JSON.stringify({items,folders:FOLDERS}))}catch(e){}};
+async function loadDropbox(keep=false){
   $("sync").lastChild.textContent="読み込み中";
   try{
     const [entries,meta,em,og]=await Promise.all([dbx.listAll(n=>toast(`読み込み中 ${n} 件`)),dbx.loadMeta(),dbx.loadEagleManifest(),dbx.listTree(OGP_DIR).catch(()=>[])]);
@@ -148,14 +161,16 @@ async function loadDropbox(){
     const out=entries.filter(e=>e[".tag"]==="file").map(e=>{const x=ef.get(e.path_lower.normalize("NFC"));const it=dbxItem(e,meta.items[e.id]||x);if(x?.addedAt)it.addedAt=x.addedAt;return it});
     for(const u of em?.urls||[]){const k="eagle-"+u.addedAt+"-"+u.url;if(!meta.urls[k])meta.urls[k]={...u,updatedAt:0}}
     for(const [k,u] of Object.entries(meta.urls))if(!u.deleted)out.push({id:"url:"+k,key:k,name:u.name,folder:u.folder,kind:"url",url:u.url,tags:u.tags||[],favorite:!!u.favorite,trashed:!!u.trashed,addedAt:u.addedAt,w:0,h:0,dbx:true});
-    dbxMode=true;eagleMode=false;items=out;
+    dbxMode=true;eagleMode=false;dbxPending=false;items=out;
     FOLDERS=entries.filter(e=>e[".tag"]==="folder").map(e=>e.path_display.slice(1)).sort((a,b)=>a.localeCompare(b,"ja"));
     TAGS.length=0;TAGS.push(...new Set(out.flatMap(i=>i.tags)));
     snap.clear();items.forEach(it=>snap.set(it.id,JSON.stringify(metaOf(it))));
-    st.view="all";st.folder=null;st.tag=null;st.q="";$("q").value="";st.sel.clear();
+    if(!keep){st.view="all";st.folder=null;st.tag=null;st.q="";$("q").value="";st.sel.clear()}
+    saveCache();
     $("sync").lastChild.textContent="Dropbox";$("toast").hidden=true;render();
   }catch(e){
-    $("sync").lastChild.textContent="デモデータ";
+    dbxPending=false;if(!dbxMode)render();
+    $("sync").lastChild.textContent=dbxMode?"Dropbox":"未接続";
     toast(e instanceof dbx.DropboxError&&e.status===401?"Dropboxに再接続してください":"Dropboxを読み込めませんでした");
   }
 }
@@ -210,7 +225,11 @@ function renderGrid(){
   list=filtered();
   const g=$("grid");liveIO?.disconnect();g.querySelectorAll("video").forEach(v=>{v.pause();v.removeAttribute("src");v.load()});g.replaceChildren();
   g.classList.toggle("selecting",st.selecting||st.sel.size>0);
-  if(!list.length){const e=document.createElement("div");e.className="empty";e.textContent=st.view==="trash"?"ゴミ箱は空です":"該当する資料はありません";g.append(e);return}
+  if(!list.length){
+    if(!items.length&&st.view!=="trash"){
+      if(!dbxMode&&!dbxPending&&dbx.isConfigured()){const b=document.createElement("button");b.className="btn";b.textContent="Dropboxに接続";b.onclick=()=>dbx.startAuth();const e=document.createElement("div");e.className="empty";e.append(b);g.append(e)}
+      return}
+    const e=document.createElement("div");e.className="empty";e.textContent=st.view==="trash"?"ゴミ箱は空です":"該当する資料はありません";g.append(e);return}
   appendCards(0);
 }
 const CHUNK=300;let gridIO;
@@ -419,7 +438,7 @@ $("setBtn").onclick=()=>{closeNav();
     $("fNames").onclick=e=>{const b=e.target.closest("button");if(b)setNames(b.dataset.v)};
     $("fTone").onclick=e=>{const b=e.target.closest("button");if(b){pref("tone",b.dataset.v);setTheme(pref("theme"))}};
     $("fThemeFile").onclick=()=>{const i=document.createElement("input");i.type="file";i.accept=".json,application/json";i.onchange=()=>i.files[0]&&importTheme(i.files[0]);i.click()};
-    $("fKeys").onclick=keysDlg;const b=$("fDbx");if(b)b.onclick=async()=>{if(!dbxMode)return dbx.startAuth();flushSave();await dbx.disconnect();location.reload()}})};
+    $("fKeys").onclick=keysDlg;const b=$("fDbx");if(b)b.onclick=async()=>{if(!dbxMode)return dbx.startAuth();flushSave();await dbx.disconnect();try{localStorage.removeItem(CACHE)}catch(e){}location.reload()}})};
 const TEXT=["txt","md","text","csv","json"];
 async function readText(it){
   if(it.text!=null)return it.text;
@@ -605,7 +624,10 @@ addEventListener("resize",()=>{if(!$("viewer").hidden)fitV()});
 
 document.querySelectorAll(".sb").forEach(el=>{let t;el.addEventListener("scroll",()=>{el.classList.add("show");clearTimeout(t);t=setTimeout(()=>el.classList.remove("show"),900)},{passive:true})});
 const authErr=await dbx.handleRedirect();
+const conn=!DEMO&&await dbx.isConnected();
+const cached=conn&&loadCache();dbxPending=conn&&!cached;
+if(cached)$("sync").lastChild.textContent="Dropbox";
 render();
 if(authErr)toast(authErr);
-if(await dbx.isConnected())loadDropbox();
+if(conn)loadDropbox(cached);
 })();
