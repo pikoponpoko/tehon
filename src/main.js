@@ -216,7 +216,7 @@ function render(){renderSide();renderGrid();renderSel()}
 /* grid events */
 $("grid").addEventListener("click",e=>{
   const c=e.target.closest(".card");if(!c)return;const it=list[+c.dataset.i];
-  if(e.target.closest(".fv")){it.favorite=!it.favorite;save();render();return}
+  if(e.target.closest(".fv")){it.favorite=!it.favorite;save();if(st.view==="fav")render();else{e.target.closest(".fv").classList.toggle("on",it.favorite);renderSide()}return}
   if(e.shiftKey&&st.anchor!=null){const a=Math.min(st.anchor,+c.dataset.i),b=Math.max(st.anchor,+c.dataset.i);for(let i=a;i<=b;i++)st.sel.add(list[i].id);renderGrid();renderSel();return}
   if(e.metaKey||e.ctrlKey||st.selecting||st.sel.size||e.target.closest(".chk")){st.sel.has(it.id)?st.sel.delete(it.id):st.sel.add(it.id);st.anchor=+c.dataset.i;renderGrid();renderSel();return}
   st.anchor=+c.dataset.i;openViewer(+c.dataset.i);
@@ -230,7 +230,7 @@ $("grid").addEventListener("keydown",e=>{const c=e.target.closest(".card");if(!c
   if(mv){e.preventDefault();$("grid").children[Math.max(0,Math.min(list.length-1,i+mv))]?.focus();return}
   if(e.key==="Enter")openViewer(i);
   if(e.key===" "){e.preventDefault();const id=list[i].id;st.sel.has(id)?st.sel.delete(id):st.sel.add(id);renderGrid();renderSel();$("grid").children[i].focus()}
-  if(e.key.toLowerCase()==="f"){list[i].favorite=!list[i].favorite;save();render();$("grid").children[i]?.focus()}
+  if(e.key.toLowerCase()==="f"){list[i].favorite=!list[i].favorite;save();if(st.view==="fav"){render();$("grid").children[i]?.focus()}else{$("grid").children[i]?.querySelector(".fv")?.classList.toggle("on",list[i].favorite);renderSide()}}
 });
 document.addEventListener("keydown",e=>{
   if(!$("viewer").hidden||!$("dlg").hidden)return;
