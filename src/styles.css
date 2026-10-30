@@ -64,6 +64,8 @@ main{display:flex;flex-direction:column;min-width:0;min-height:0;height:100%}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .btn.ic{padding:6px 8px}
 select.btn{padding-right:8px}
+.sortw{display:inline-flex;position:relative}
+.sortic{display:none}
 .size{width:90px;accent-color:var(--accent)}
 .selbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-block:8px;padding-left:16px;padding-right:max(16px,env(safe-area-inset-right,0px));background:var(--accent-soft);border-bottom:1px solid var(--line);font-size:13px}
 .selbar b{color:var(--accent-ink);font-family:var(--mono);font-variant-numeric:tabular-nums}
@@ -146,6 +148,14 @@ select.btn{padding-right:8px}
   .vbar .t{order:-1;flex-basis:calc(100% - 50px)}
   .vbtn{padding:6px 9px}
   .size{display:none}
+  .bar{flex-wrap:nowrap;gap:6px;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
+  .bar>*{flex-shrink:0}
+  .search{min-width:0;flex-shrink:1;padding:0 8px}
+  .sortw{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:6px 8px}
+  .sortic{display:block}
+  .sortw select{position:absolute;inset:0;width:100%;opacity:0}
+  #shuffle{padding:6px 8px}
+  #shuffle span{display:none}
   .grid{--cell:110px!important;gap:6px}
   .grid.fall{column-gap:6px}.grid.fall .card{margin-bottom:6px}
   .card .meta{padding:4px 6px}

@@ -22,14 +22,14 @@
     <div class="bar">
       <button class="btn ic menu" id="menuBtn" aria-label="メニュー">☰</button>
       <label class="search"><span aria-hidden="true">⌕</span><input id="q" type="search" placeholder="検索" autocomplete="off"></label>
-      <select class="btn" id="sort" aria-label="並べ替え">
+      <span class="sortw"><svg class="sortic" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2v12M2 11l3 3 3-3M11 14V2M8 5l3-3 3 3"/></svg><select class="btn" id="sort" aria-label="並べ替え">
         <option value="added-desc">追加日（新しい順）</option>
         <option value="added-asc">追加日（古い順）</option>
         <option value="name-asc">名前</option>
         <option value="kind">種類</option>
         <option value="random">ランダム</option>
-      </select>
-      <button class="btn" id="shuffle" hidden>シャッフル</button>
+      </select></span>
+      <button class="btn" id="shuffle" hidden aria-label="シャッフル"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h3l6 8h3M2 12h3l6-8h3M12 2l2 2-2 2M12 10l2 2-2 2"/></svg><span>シャッフル</span></button>
       <span class="seg" role="group" aria-label="レイアウト"><button id="lGrid" aria-label="グリッド" title="グリッド"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg></button><button id="lFall" class="on" aria-label="ウォーターフォール" title="ウォーターフォール"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="8" rx="1"/><rect x="9" y="1" width="6" height="5" rx="1"/><rect x="1" y="11" width="6" height="4" rx="1"/><rect x="9" y="8" width="6" height="7" rx="1"/></svg></button></span>
       <input class="size" id="size" type="range" min="1" max="12" step="1" value="6" aria-label="列数" title="列数">
       <button class="btn" id="selBtn">選択</button>
