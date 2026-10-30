@@ -11,7 +11,6 @@ Dropbox を保存先にするリファレンス管理アプリ（ブラウザ版
 
 ```sh
 npm install
-cp .env.example .env   # VITE_DROPBOX_APP_KEY を記入
 npm run dev            # http://localhost:5173/
 ```
 
@@ -30,7 +29,7 @@ Eagle ライブラリ読み込み（テスト用）は `npm run dev` では常�
      - `https://tehon.<アカウントのサブドメイン>.workers.dev/`（Cloudflare の公開 URL）
      - `http://localhost:5173/`
    - **Allow public clients (Implicit Grant & PKCE)** が `Allow` になっていることを確認
-   - **App key** を控える（App secret は使いません）
+   - App key（`x7ap0g0pau1irkc`）は `src/config.ts` に記載済み。App secret は使いません
 
 接続すると Dropbox の `アプリ/Tehon/` フォルダがライブラリになります。
 
@@ -40,11 +39,11 @@ Eagle ライブラリ読み込み（テスト用）は `npm run dev` では常�
 
 リポジトリに接続した Worker `tehon` が、push ごとに `npx wrangler deploy` で静的サイトとして公開します（設定は `wrangler.toml`。ビルドは `npm run build` が自動で走ります）。
 
-1. Cloudflare ダッシュボード → **Workers & Pages** → `tehon` → **Settings** → **Build** → **Variables and secrets** に `VITE_DROPBOX_APP_KEY` = App key を追加。Eagle 読み込みを試す場合は `VITE_EAGLE_IMPORT` = `1`
+1. Eagle 読み込みを試す場合は **Workers & Pages** → `tehon` → **Settings** → **Build** → **Variables and secrets** に `VITE_EAGLE_IMPORT` = `1`
 2. 公開 URL（`https://tehon.<アカウントのサブドメイン>.workers.dev/`）を Dropbox の Redirect URIs にも追加
 
 ブランチごとのプレビュー URL でも画面は確認できますが、Dropbox 接続は Redirect URI に登録した URL でのみ動きます。
 
-手元からデプロイする場合は `npx wrangler login` のあと `VITE_DROPBOX_APP_KEY=... npx wrangler deploy`。
+手元からデプロイする場合は `npx wrangler login` のあと `npx wrangler deploy`。
 
 セキュリティヘッダー（CSP など）は `public/_headers` にあります。
