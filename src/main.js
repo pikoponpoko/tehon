@@ -91,7 +91,7 @@ function dbxItem(e,m){
   const dot=e.name.lastIndexOf(".");const ext=dot>0?e.name.slice(dot+1).toLowerCase():"";const kind=kindOf(ext);
   const p=e.path_display.slice(1);const folder=p.includes("/")?p.slice(0,p.lastIndexOf("/")):"";
   const d=e.media_info?.metadata?.dimensions;
-  return {id:e.id,name:e.name,folder,kind,dbx:true,size:e.size,badge:kind==="image"&&!VIEW_EXT.includes(ext)?ext||"file":null,
+  return {id:e.id,name:e.name,folder,kind,dbx:true,size:e.size,path:e.path_display,rev:e.rev,badge:kind==="image"&&!VIEW_EXT.includes(ext)?ext||"file":null,
     viewable:kind!=="image"||VIEW_EXT.includes(ext),thumbable:dbx.THUMB_EXT.includes(ext),
     tags:m?.tags||[],favorite:!!m?.favorite,trashed:!!m?.trashed,url:null,w:d?.width||0,h:d?.height||0,
     addedAt:Date.parse(e.client_modified||e.server_modified||"")||0};
@@ -261,7 +261,7 @@ $("setBtn").onclick=()=>{const cur=pref("theme")||"system",bg=pref("vbg")||"dark
 const TEXT=["txt","md","text","csv","json"];
 async function readText(it){
   if(it.text!=null)return it.text;
-  if(it.dbx){if(it.textP)return it.textP;return it.textP=dbx.readText(it.id).then(r=>{it.readonly=true;it.enc=r.enc;it.text=r.text;return r.text}).catch(()=>{it.textP=null;return ""})}
+  if(it.dbx){if(it.textP)return it.textP;return it.textP=dbx.readText(it.id).then(r=>{it.readonly=r.truncated||r.enc==="Shift_JIS";it.enc=r.enc;it.rev=r.rev||it.rev;it.text=r.text;return r.text}).catch(()=>{it.textP=null;return ""})}
   if(!it.file)return "";
   if(it.file.size>2e6){it.readonly=true;it.text=new TextDecoder().decode(await it.file.slice(0,2e6).arrayBuffer());return it.text}
   const buf=await it.file.arrayBuffer();
@@ -350,10 +350,11 @@ function loadV(){
   cancelAnimationFrame(V.raf);vv.pause();V.video=null;
   const it=list[V.i];$("vTitle").textContent=it.name;$("vFav").classList.toggle("on",it.favorite);
   const anim=it.kind==="gif"||it.kind==="video";$("vPlay").hidden=!anim||((it.local||it.dbx)&&it.kind==="gif");V.play=true;$("vPlay").textContent="❚❚";
-  renderFoot(it);$("vState").textContent="";
+  renderFoot(it);$("vState").textContent="";$("vReload").hidden=true;
+  if(it.conflict){it.conflict=false;it.text=null;it.textP=null}
   if(it.kind==="text"){useEl(vt);vt.value="";readText(it).then(t=>{if(list[V.i]!==it)return;vt.value=t;vt.readOnly=!!it.readonly;
-      $("vState").textContent=it.dbx?"閲覧のみ":it.readonly?"2MBを超えるため閲覧のみ":it.enc==="Shift_JIS"?"Shift_JIS":""});
-    vt.oninput=()=>{clearTimeout(vtTimer);$("vState").textContent="編集中";vtTimer=setTimeout(()=>{it.text=vt.value;save();renderGrid();$("vState").textContent=it.local||eagleMode?"保存しました（このデモ内のみ）":"保存しました"},600)};return}
+      $("vState").textContent=it.readonly?(it.enc==="Shift_JIS"&&it.dbx?"Shift_JIS・閲覧のみ":"2MBを超えるため閲覧のみ"):it.enc==="Shift_JIS"?"Shift_JIS":"";$("vReload").hidden=true});
+    vt.oninput=()=>{if(it.conflict)return;clearTimeout(vtTimer);$("vState").textContent="編集中";vtTimer=setTimeout(()=>saveText(it,vt.value),600)};return}
   if(it.kind==="url"){vc.width=800;vc.height=450;vx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue("--accent");vx.fillRect(0,0,800,450);vx.fillStyle="#fff";vx.font="500 28px sans-serif";vx.fillText(it.name,40,200);vx.font="20px monospace";vx.fillText(it.url,40,250);useEl(vc,800,450);return}
   if(it.dbx){
     const show=src=>{if(list[V.i]!==it||$("viewer").hidden)return;
@@ -374,6 +375,14 @@ function loadV(){
   const W=Math.round(it.w/2),H=Math.round(it.h/2);vc.width=W;vc.height=H;draw(vx,it,W,H);useEl(vc,W,H);
   if(anim){let t0=performance.now(),acc=0;const f=n=>{if(V.play)acc+=(n-t0)/1000;t0=n;draw(vx,it,W,H,acc*(it.kind==="gif"?3:1.2));V.raf=requestAnimationFrame(f)};V.raf=requestAnimationFrame(f)}
 }
+// Dropbox text is written back only if nobody changed it since it was read (rev check); a conflict stops autosave until reloaded.
+async function saveText(it,value){
+  if(!it.dbx){it.text=value;save();renderGrid();$("vState").textContent=it.local||eagleMode?"保存しました（このデモ内のみ）":"保存しました";return}
+  $("vState").textContent="保存中";
+  try{const m=await dbx.writeText(it.path,value,it.rev);it.rev=m.rev;it.size=m.size;it.text=value;renderGrid();if(list[V.i]===it)$("vState").textContent="保存しました"}
+  catch(e){if(list[V.i]!==it)return;if(e instanceof dbx.ConflictError){it.conflict=true;$("vState").textContent="他の端末で更新されたため保存していません";$("vReload").hidden=false}else $("vState").textContent="保存できませんでした"}
+}
+$("vReload").onclick=()=>{const it=list[V.i];it.conflict=false;it.text=null;it.textP=null;loadV()};
 function renderFoot(it){
   const f=$("vfoot");f.replaceChildren();
   for(const t of it.tags){const s=document.createElement("span");s.className="tag";s.textContent="# "+t;const x=document.createElement("button");x.textContent="✕";x.setAttribute("aria-label","タグを外す");x.onclick=()=>{it.tags=it.tags.filter(z=>z!==t);save();renderFoot(it);renderSide()};s.append(x);f.append(s)}
