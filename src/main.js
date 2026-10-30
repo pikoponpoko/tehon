@@ -221,9 +221,10 @@ $("grid").addEventListener("click",e=>{
   if(e.metaKey||e.ctrlKey||st.selecting||st.sel.size||e.target.closest(".chk")){st.sel.has(it.id)?st.sel.delete(it.id):st.sel.add(it.id);st.anchor=+c.dataset.i;renderGrid();renderSel();return}
   st.anchor=+c.dataset.i;openViewer(+c.dataset.i);
 });
-let lp;$("grid").addEventListener("pointerdown",e=>{const c=e.target.closest(".card");if(!c||e.pointerType==="mouse")return;lp=setTimeout(()=>{st.selecting=true;st.sel.add(list[+c.dataset.i].id);renderGrid();renderSel();lp="done"},450)});
-["pointerup","pointercancel","pointermove"].forEach(ev=>$("grid").addEventListener(ev,e=>{if(ev==="pointermove"&&Math.abs(e.movementX)+Math.abs(e.movementY)<4)return;if(lp!=="done")clearTimeout(lp)}));
-$("grid").addEventListener("click",e=>{if(lp==="done"){lp=null;e.stopImmediatePropagation()}},true);
+// pinching / pinchEnd: a pinch on the list must not turn into a long-press or a tap.
+let lp,lp0,pinching=false,pinchEnd=0;$("grid").addEventListener("pointerdown",e=>{const c=e.target.closest(".card");if(!c||e.pointerType==="mouse")return;clearTimeout(lp);if(pinching||!e.isPrimary)return;lp0=[e.clientX,e.clientY];lp=setTimeout(()=>{if(pinching)return;st.selecting=true;st.sel.add(list[+c.dataset.i].id);renderGrid();renderSel();lp="done"},450)});
+["pointerup","pointercancel","pointermove"].forEach(ev=>$("grid").addEventListener(ev,e=>{if(ev==="pointermove"&&lp0&&Math.hypot(e.clientX-lp0[0],e.clientY-lp0[1])<8)return;if(lp!=="done")clearTimeout(lp)}));
+$("grid").addEventListener("click",e=>{if(lp==="done"||pinching||Date.now()-pinchEnd<500){lp=null;e.stopImmediatePropagation()}},true);
 /* keyboard */
 const MAC=/Mac|iPhone|iPad/.test(navigator.platform);
 const typing=t=>t.matches?.("input,select,textarea,[contenteditable]");
@@ -290,11 +291,13 @@ addEventListener("resize",()=>{if(!$("grid").classList.contains("cols"))$("size"
   const pinchCols=f=>setCols(Math.round(base/f));
   wrap.addEventListener("wheel",e=>{if(!e.ctrlKey)return;e.preventDefault();acc+=e.deltaY;if(Math.abs(acc)>=40){setCols(curCols()+Math.sign(acc));acc=0}},{passive:false});
   let d0=0;const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
-  wrap.addEventListener("touchstart",e=>{if(e.touches.length===2){d0=dist(e.touches);base=curCols()}},{passive:true});
+  wrap.addEventListener("touchstart",e=>{if(e.touches.length>=2){if(lp!=="done")clearTimeout(lp);pinching=true;d0=dist(e.touches);base=curCols()}},{passive:true});
   wrap.addEventListener("touchmove",e=>{if(e.touches.length!==2||!d0)return;e.preventDefault();pinchCols(dist(e.touches)/d0)},{passive:false});
-  wrap.addEventListener("touchend",e=>{if(e.touches.length<2)d0=0});
+  wrap.addEventListener("touchend",e=>{if(e.touches.length<2)d0=0;if(pinching){pinchEnd=Date.now();if(!e.touches.length)pinching=false}});
+  wrap.addEventListener("touchcancel",()=>{d0=0;pinching=false;pinchEnd=Date.now()});
   // Safari sends gesture events for trackpad and touch pinches.
-  wrap.addEventListener("gesturestart",e=>{e.preventDefault();base=curCols()});
+  wrap.addEventListener("gesturestart",e=>{e.preventDefault();clearTimeout(lp);base=curCols()});
+  wrap.addEventListener("gestureend",()=>{pinchEnd=Date.now()});
   wrap.addEventListener("gesturechange",e=>{e.preventDefault();if(!d0)pinchCols(e.scale)});}
 $("selBtn").onclick=()=>{st.selecting=!st.selecting;if(!st.selecting)st.sel.clear();renderGrid();renderSel()};
 $("bAll").onclick=()=>{list.forEach(i=>st.sel.add(i.id));renderGrid();renderSel()};
