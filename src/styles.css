@@ -94,6 +94,10 @@ select.btn{padding-right:8px}
 .kind{position:absolute;top:6px;left:6px;font-family:var(--mono);font-size:10px;font-weight:500;background:rgba(10,14,22,.72);color:#fff;padding:2px 5px;border-radius:4px}
 .fv{all:unset;cursor:pointer;color:var(--muted);font-size:14px;line-height:1}
 .fv.on{color:var(--fav)}
+.no-names .card.media .meta{position:absolute;right:6px;bottom:6px;padding:0}
+.no-names .card.media .nm{display:none}
+.no-names .card.media .fv{display:none;width:24px;height:24px;align-items:center;justify-content:center;border-radius:50%;background:var(--surface);border:1px solid var(--line)}
+.no-names .card.media .fv.on,.no-names .card.media:hover .fv{display:flex}
 .chk{position:absolute;top:6px;right:6px;width:20px;height:20px;border-radius:50%;border:2px solid #fff;background:rgba(10,14,22,.35);display:none;align-items:center;justify-content:center;color:#fff;font-size:12px}
 .selecting .chk,.card:hover .chk{display:flex}
 .card.sel .chk{display:flex;background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
