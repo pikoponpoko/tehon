@@ -522,12 +522,12 @@ $("scrim").onclick=closeNav;
 
 /* dialogs */
 function formDlg(title,html,ok,fn,init){
-  const f=$("dlgForm");f.className="";f.innerHTML=`<h4></h4>${html}<div class="row"><button type="button" class="btn" id="dCancel">キャンセル</button><button class="btn pri">${ok}</button></div>`;
+  const f=$("dlgForm");f.className="";f.innerHTML=`<div class="dh"><h4></h4><button type="button" class="x" id="dX" aria-label="閉じる">✕</button></div>${html}<div class="row"><button type="button" class="btn" id="dCancel">キャンセル</button><button class="btn pri">${ok}</button></div>`;
   f.querySelector("h4").textContent=title;$("dlg").hidden=false;init&&init();f.querySelector("input:not([hidden]),select")?.focus();
-  $("dCancel").onclick=()=>{$("dlg").hidden=true;dropImp()};
+  $("dCancel").onclick=$("dX").onclick=()=>{$("dlg").hidden=true;dropImp()};
   f.onsubmit=e=>{e.preventDefault();$("dlg").hidden=true;fn();dropImp()};
 }
-function confirmDlg(title,msg,fn){formDlg(title,`<div style="color:var(--muted);font-size:13px"></div>`,"削除",fn);$("dlgForm").querySelector("div").textContent=msg}
+function confirmDlg(title,msg,fn){formDlg(title,`<div class="msg" style="color:var(--muted);font-size:13px"></div>`,"削除",fn);$("dlgForm").querySelector(".msg").textContent=msg}
 $("dlg").addEventListener("keydown",e=>{if(e.key==="Escape"){$("dlg").hidden=true;dropImp()}});
 let tt;function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,2400)}
 

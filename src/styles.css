@@ -121,6 +121,8 @@ select.btn{padding-right:8px}
 .dlg{position:fixed;inset:0;background:rgba(6,8,12,.5);z-index:30;display:flex;align-items:center;justify-content:center;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .dlg form{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;width:min(380px,100%);display:flex;flex-direction:column;gap:10px}
 .dlg h4{margin:0;font-size:15px}
+.dlg .dh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:-6px -8px 0 0}
+.dlg .x{border:0;background:none;color:var(--muted);font-size:15px;line-height:1;padding:6px 8px;border-radius:6px}.dlg .x:hover{color:var(--text)}
 .dlg input,.dlg select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 10px}
 .dlg form.set{width:min(440px,100%);max-height:calc(100dvh - 32px);overflow:auto}.dlg form.set>*{flex:none}
 .dlg .sh{font-size:12px;color:var(--muted);margin-top:4px}
