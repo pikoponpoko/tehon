@@ -78,6 +78,18 @@ async function pumpThumbs(){
       .catch(()=>ids.forEach(id=>thumbCache.delete(id))).finally(()=>{thumbBusy--;pumpThumbs()});
   }
 }
+// Full-size images: temporary link (dbxLink) + decoded Image kept for a few items, so opening and paging are instant.
+const fullCache=new Map();
+function full(it){
+  const c=fullCache.get(it.id);if(c&&Date.now()<it.linkExp){fullCache.delete(it.id);fullCache.set(it.id,c);return c.p}
+  const im=new Image();im.decoding="async";
+  const p=dbxLink(it).then(l=>{im.src=l;return im.decode().then(()=>l,()=>l)});
+  p.catch(()=>fullCache.delete(it.id));fullCache.set(it.id,{p,im});
+  while(fullCache.size>8)fullCache.delete(fullCache.keys().next().value);
+  return p;
+}
+function prefetch(it){if(!it?.dbx||!it.viewable)return;it.kind==="video"?dbxLink(it).catch(()=>{}):it.kind!=="text"&&it.kind!=="url"&&full(it).catch(()=>{})}
+function prefetchAround(){for(const d of[1,-1,2])prefetch(list[V.i+d])}
 const VIEW_EXT=["jpg","jpeg","png","gif","webp","bmp","svg","avif","ico"],VID_EXT=["mp4","webm","mov","m4v","ogv"],TXT_EXT=["txt","md","text","csv","json"];
 function kindOf(ext){return ext==="gif"?"gif":VID_EXT.includes(ext)?"video":TXT_EXT.includes(ext)?"text":"image"}
 const metaOf=it=>it.kind==="url"?{name:it.name,url:it.url,folder:it.folder,tags:it.tags,favorite:it.favorite,trashed:it.trashed,addedAt:it.addedAt}:{tags:it.tags,favorite:it.favorite,trashed:it.trashed};
@@ -103,9 +115,11 @@ function dbxItem(e,m){
 async function loadDropbox(){
   $("sync").lastChild.textContent="読み込み中";
   try{
-    const [entries,meta]=await Promise.all([dbx.listAll(n=>toast(`読み込み中 ${n} 件`)),dbx.loadMeta()]);
+    const [entries,meta,em]=await Promise.all([dbx.listAll(n=>toast(`読み込み中 ${n} 件`)),dbx.loadMeta(),dbx.loadEagleManifest()]);
     own=meta.own;
-    const out=entries.filter(e=>e[".tag"]==="file").map(e=>dbxItem(e,meta.items[e.id]));
+    const ef=new Map(Object.entries(em?.files||{}).map(([k,v])=>[k.normalize("NFC").toLowerCase(),v]));
+    const out=entries.filter(e=>e[".tag"]==="file").map(e=>{const x=ef.get(e.path_lower.normalize("NFC"));const it=dbxItem(e,meta.items[e.id]||x);if(x?.addedAt)it.addedAt=x.addedAt;return it});
+    for(const u of em?.urls||[]){const k="eagle-"+u.addedAt+"-"+u.url;if(!meta.urls[k])meta.urls[k]={...u,updatedAt:0}}
     for(const [k,u] of Object.entries(meta.urls))if(!u.deleted)out.push({id:"url:"+k,key:k,name:u.name,folder:u.folder,kind:"url",url:u.url,tags:u.tags||[],favorite:!!u.favorite,trashed:!!u.trashed,addedAt:u.addedAt,w:0,h:0,dbx:true});
     dbxMode=true;eagleMode=false;items=out;
     FOLDERS=entries.filter(e=>e[".tag"]==="folder").map(e=>e.path_display.slice(1)).sort((a,b)=>a.localeCompare(b,"ja"));
@@ -215,29 +229,63 @@ function render(){renderSide();renderGrid();renderSel()}
 /* grid events */
 $("grid").addEventListener("click",e=>{
   const c=e.target.closest(".card");if(!c)return;const it=list[+c.dataset.i];
-  if(e.target.closest(".fv")){it.favorite=!it.favorite;save();render();return}
+  if(e.target.closest(".fv")){it.favorite=!it.favorite;save();if(st.view==="fav")render();else{e.target.closest(".fv").classList.toggle("on",it.favorite);renderSide()}return}
   if(e.shiftKey&&st.anchor!=null){const a=Math.min(st.anchor,+c.dataset.i),b=Math.max(st.anchor,+c.dataset.i);for(let i=a;i<=b;i++)st.sel.add(list[i].id);renderGrid();renderSel();return}
   if(e.metaKey||e.ctrlKey||st.selecting||st.sel.size||e.target.closest(".chk")){st.sel.has(it.id)?st.sel.delete(it.id):st.sel.add(it.id);st.anchor=+c.dataset.i;renderGrid();renderSel();return}
   st.anchor=+c.dataset.i;openViewer(+c.dataset.i);
 });
-let lp;$("grid").addEventListener("pointerdown",e=>{const c=e.target.closest(".card");if(!c||e.pointerType==="mouse")return;lp=setTimeout(()=>{st.selecting=true;st.sel.add(list[+c.dataset.i].id);renderGrid();renderSel();lp="done"},450)});
-["pointerup","pointercancel","pointermove"].forEach(ev=>$("grid").addEventListener(ev,e=>{if(ev==="pointermove"&&Math.abs(e.movementX)+Math.abs(e.movementY)<4)return;if(lp!=="done")clearTimeout(lp)}));
-$("grid").addEventListener("click",e=>{if(lp==="done"){lp=null;e.stopImmediatePropagation()}},true);
-$("grid").addEventListener("keydown",e=>{const c=e.target.closest(".card");if(!c)return;const i=+c.dataset.i;
-  const cols=getComputedStyle($("grid")).gridTemplateColumns.split(" ").length;
-  const mv={ArrowRight:1,ArrowLeft:-1,ArrowDown:cols,ArrowUp:-cols}[e.key];
-  if(mv){e.preventDefault();$("grid").children[Math.max(0,Math.min(list.length-1,i+mv))]?.focus();return}
-  if(e.key==="Enter")openViewer(i);
-  if(e.key===" "){e.preventDefault();const id=list[i].id;st.sel.has(id)?st.sel.delete(id):st.sel.add(id);renderGrid();renderSel();$("grid").children[i].focus()}
-  if(e.key.toLowerCase()==="f"){list[i].favorite=!list[i].favorite;save();render();$("grid").children[i]?.focus()}
-});
+let hov;$("grid").addEventListener("pointerover",e=>{const c=e.target.closest(".card");clearTimeout(hov);if(c&&e.pointerType==="mouse")hov=setTimeout(()=>prefetch(list[+c.dataset.i]),120)});
+// pinching / pinchEnd: a pinch on the list must not turn into a long-press or a tap.
+let lp,lp0,pinching=false,pinchEnd=0;$("grid").addEventListener("pointerdown",e=>{const c=e.target.closest(".card");if(!c||e.pointerType==="mouse")return;clearTimeout(lp);if(pinching||!e.isPrimary)return;lp0=[e.clientX,e.clientY];lp=setTimeout(()=>{if(pinching)return;st.selecting=true;st.sel.add(list[+c.dataset.i].id);renderGrid();renderSel();lp="done"},450)});
+["pointerup","pointercancel","pointermove"].forEach(ev=>$("grid").addEventListener(ev,e=>{if(ev==="pointermove"&&lp0&&Math.hypot(e.clientX-lp0[0],e.clientY-lp0[1])<8)return;if(lp!=="done")clearTimeout(lp)}));
+$("grid").addEventListener("click",e=>{if(lp==="done"||pinching||Date.now()-pinchEnd<500){lp=null;e.stopImmediatePropagation()}},true);
+/* keyboard */
+const MAC=/Mac|iPhone|iPad/.test(navigator.platform);
+const typing=t=>t.matches?.("input,select,textarea,[contenteditable]");
+function cardAt(i){const g=$("grid");let c;while(!(c=g.querySelector(`.card[data-i="${i}"]`))&&g.querySelector(".more"))appendCards(g.querySelectorAll(".card").length);return c}
+function focusCard(i){if(!list.length)return;i=Math.max(0,Math.min(list.length-1,i));const c=cardAt(i);c?.focus();c?.scrollIntoView({block:"nearest"});return i}
+const curIdx=()=>{const c=document.activeElement?.closest?.(".card");return c&&$("grid").contains(c)?+c.dataset.i:null};
+// Up/down by position so it works for both the grid and the waterfall layout.
+function vertical(i,dir){const c=cardAt(i);if(!c)return i;const r=c.getBoundingClientRect(),cx=r.left+r.width/2;let best=null,bd=Infinity;
+  for(const o of $("grid").querySelectorAll(".card")){const q=o.getBoundingClientRect();const dy=dir>0?q.top-r.bottom:r.top-q.bottom;if(dy<-1)continue;const d=dy*4+Math.abs(q.left+q.width/2-cx);if(d<bd){bd=d;best=+o.dataset.i}}
+  return best??i}
+// Acts on the selection, or on the focused card when nothing is selected.
+function useFocus(){if(st.sel.size)return true;const i=curIdx();if(i==null)return false;st.sel.add(list[i].id);st.anchor=i;st.imp=true;return true}
+function dropImp(){if(!st.imp)return;st.imp=false;st.sel.clear();renderGrid();renderSel();if(st.anchor!=null)focusCard(st.anchor)}
+function rangeTo(i){if(st.anchor==null)st.anchor=curIdx()??i;st.sel.clear();const a=Math.min(st.anchor,i),b=Math.max(st.anchor,i);for(let k=a;k<=b;k++)st.sel.add(list[k].id);renderGrid();renderSel();focusCard(i)}
+function keysDlg(){const m=MAC?"⌘":"Ctrl";
+  const K=[["一覧",[["← → ↑ ↓","移動"],["Shift + ← → ↑ ↓","範囲選択"],["Home / End","先頭 / 末尾"],["Enter","開く"],["Space","選択"],[m+" + A","すべて選択"],["Esc","選択解除"],["F","お気に入り"],["T","タグを追加"],["M","移動"],["Delete","ゴミ箱へ"],["/ , "+m+" + F","検索"],["N","追加"],["+ / -","列数"],["1〜9 / 0","列数を指定 / 自動"],["S","サイドバー"],["G","グリッド / ウォーターフォール"]]],
+    ["ビューア",[["← →","前 / 次"],["+ / - / 0","拡大 / 縮小 / 全体"],["1","100%"],["Space","再生 / 停止"],["F","お気に入り"],["T","タグ"],["Delete","ゴミ箱へ"],["Esc","閉じる"]]]];
+  formDlg("キーボードショートカット",K.map(([h,r])=>`<div class="keys"><b>${h}</b>${r.map(([k,l])=>`<span>${l}</span><kbd>${esc(k)}</kbd>`).join("")}</div>`).join(""),"閉じる",()=>{},()=>{$("dCancel").hidden=true;$("dlgForm").querySelector(".pri").focus()})}
 document.addEventListener("keydown",e=>{
-  if(!$("viewer").hidden||!$("dlg").hidden)return;
-  if(e.target.matches("input,select"))return;
-  if((e.metaKey||e.ctrlKey)&&e.key==="a"){e.preventDefault();list.forEach(i=>st.sel.add(i.id));renderGrid();renderSel()}
-  if(e.key==="Escape"){st.sel.clear();st.selecting=false;renderGrid();renderSel()}
-  if(e.key==="/"){e.preventDefault();$("q").focus()}
-  if((e.key==="Delete"||e.key==="Backspace")&&st.sel.size)trashSel();
+  if(!$("viewer").hidden||!$("dlg").hidden||e.altKey||e.isComposing)return;
+  if(typing(e.target)){if(e.target.id==="q"&&e.key==="Escape"){e.target.blur();focusCard(0)}return}
+  const mod=e.metaKey||e.ctrlKey,k=e.key.length===1?e.key.toLowerCase():e.key,i=curIdx(),tr=st.view==="trash";
+  if(mod){
+    if(k==="a"){e.preventDefault();list.forEach(x=>st.sel.add(x.id));renderGrid();renderSel();if(i!=null)focusCard(i)}
+    if(k==="f"){e.preventDefault();$("q").focus();$("q").select()}
+    return}
+  const mv={ArrowRight:1,ArrowLeft:-1}[k];
+  if(mv||k==="ArrowUp"||k==="ArrowDown"){e.preventDefault();
+    const to=i==null?0:mv?i+mv:vertical(i,k==="ArrowDown"?1:-1);
+    if(e.shiftKey)rangeTo(Math.max(0,Math.min(list.length-1,to)));else{const n=focusCard(to);if(n!=null)st.anchor=n}return}
+  if(k==="Home"||k==="End"){e.preventDefault();const to=k==="Home"?0:list.length-1;e.shiftKey?rangeTo(to):focusCard(to);return}
+  if(k==="Escape"){st.sel.clear();st.selecting=false;renderGrid();renderSel();if(i!=null)focusCard(i);return}
+  if(k==="/"){e.preventDefault();$("q").focus();return}
+  if(k==="?"){keysDlg();return}
+  if(k==="n"){$("addBtn").click();return}
+  if(k==="s"){toggleSide();return}
+  if(k==="g"){setLayout(st.layout==="fall"?"grid":"fall");return}
+  if(k==="+"||k==="="||k==="-"){setCols(curCols()+(k==="-"?-1:1));return}
+  if(/^[0-9]$/.test(k)){setCols(+k||null);return}
+  if(k==="Enter"&&i!=null){e.preventDefault();openViewer(i);return}
+  if(k===" "&&i!=null){e.preventDefault();const id=list[i].id;st.sel.has(id)?st.sel.delete(id):st.sel.add(id);st.anchor=i;renderGrid();renderSel();focusCard(i);return}
+  if(k==="Delete"||k==="Backspace"){if(useFocus()){e.preventDefault();trashSel();if(!tr){st.imp=false;if(i!=null)focusCard(i)}}return}
+  if(tr)return;
+  if(k==="f"&&!st.sel.size&&i!=null){const it=list[i];it.favorite=!it.favorite;save();if(st.view==="fav"){render();focusCard(i)}else{cardAt(i)?.querySelector(".fv")?.classList.toggle("on",it.favorite);renderSide()}return}
+  if(k==="f"&&useFocus()){$("bFav").click();if(i!=null)focusCard(i);return}
+  if(k==="t"&&useFocus()){e.preventDefault();$("bTag").click();return}
+  if(k==="m"&&!dbxMode&&useFocus()){$("bMove").click();return}
 });
 
 /* toolbar */
@@ -247,7 +295,25 @@ $("shuffle").onclick=()=>{st.rseed=(Date.now()^Math.random()*1e9)|0;renderGrid()
 function setLayout(l){st.layout=l;$("grid").classList.toggle("fall",l==="fall");$("lGrid").classList.toggle("on",l==="grid");$("lFall").classList.toggle("on",l==="fall");try{localStorage.setItem("tehon-layout",l)}catch(e){}}
 $("lGrid").onclick=()=>setLayout("grid");$("lFall").onclick=()=>setLayout("fall");
 try{const l=localStorage.getItem("tehon-layout");if(l)setLayout(l)}catch(e){}
-$("size").oninput=e=>{$("grid").style.setProperty("--cell",e.target.value+"px")};
+// Column count; null follows the window width.
+const curCols=()=>{const g=$("grid");if(g.style.getPropertyValue("--cols"))return +g.style.getPropertyValue("--cols");const cs=getComputedStyle(g),cell=parseFloat(cs.getPropertyValue("--cell"))||170,gap=parseFloat(cs.columnGap)||10;return Math.max(1,Math.floor((g.clientWidth+gap)/(cell+gap)))};
+function setCols(n){const g=$("grid");n=n&&Math.max(1,Math.min(12,n));if(n)g.style.setProperty("--cols",n);else g.style.removeProperty("--cols");g.classList.toggle("cols",!!n);$("size").value=n||curCols();try{localStorage.setItem("tehon-cols",n||"")}catch(e){}}
+$("size").oninput=e=>setCols(+e.target.value);
+try{const n=+localStorage.getItem("tehon-cols");setCols(n||null)}catch(e){setCols(null)}
+addEventListener("resize",()=>{if(!$("grid").classList.contains("cols"))$("size").value=curCols()});
+// Pinch on the list changes the column count: spreading fingers means fewer, larger thumbnails.
+{let acc=0,base=0;const wrap=$("wrap");
+  const pinchCols=f=>setCols(Math.round(base/f));
+  wrap.addEventListener("wheel",e=>{if(!e.ctrlKey)return;e.preventDefault();acc+=e.deltaY;if(Math.abs(acc)>=40){setCols(curCols()+Math.sign(acc));acc=0}},{passive:false});
+  let d0=0;const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+  wrap.addEventListener("touchstart",e=>{if(e.touches.length>=2){if(lp!=="done")clearTimeout(lp);pinching=true;d0=dist(e.touches);base=curCols()}},{passive:true});
+  wrap.addEventListener("touchmove",e=>{if(e.touches.length!==2||!d0)return;e.preventDefault();pinchCols(dist(e.touches)/d0)},{passive:false});
+  wrap.addEventListener("touchend",e=>{if(e.touches.length<2)d0=0;if(pinching){pinchEnd=Date.now();if(!e.touches.length)pinching=false}});
+  wrap.addEventListener("touchcancel",()=>{d0=0;pinching=false;pinchEnd=Date.now()});
+  // Safari sends gesture events for trackpad and touch pinches.
+  wrap.addEventListener("gesturestart",e=>{e.preventDefault();clearTimeout(lp);base=curCols()});
+  wrap.addEventListener("gestureend",()=>{pinchEnd=Date.now()});
+  wrap.addEventListener("gesturechange",e=>{e.preventDefault();if(!d0)pinchCols(e.scale)});}
 $("selBtn").onclick=()=>{st.selecting=!st.selecting;if(!st.selecting)st.sel.clear();renderGrid();renderSel()};
 $("bAll").onclick=()=>{list.forEach(i=>st.sel.add(i.id));renderGrid();renderSel()};
 $("bNone").onclick=()=>{st.sel.clear();st.selecting=false;renderGrid();renderSel()};
@@ -316,13 +382,13 @@ const H=t=>`<div class="sh">${t}</div>`;
 $("setBtn").onclick=()=>{closeNav();
   formDlg("設定",`${H("カラーテーマ")}${seg("fTone",[["auto","自動"],["light","ライト"],["dark","ダーク"]],pref("tone")||"auto")}<div class="tiles" id="fThemes">${themeTiles()}</div><button type="button" class="btn" id="fThemeFile">テーマを読み込む（.json）</button>
   ${H("ビューアの背景")}<div class="tiles" id="fVbgs">${VBGS.map(([v,l,sw])=>tile("vbg",v,l,sw)).join("")}</div>
-  ${dbx.isConfigured()?`${H("Dropbox")}<button type="button" class="btn" id="fDbx">${dbxMode?"切断":"接続"}</button>`:""}`,"閉じる",()=>{},
+  ${dbx.isConfigured()?`${H("Dropbox")}<button type="button" class="btn" id="fDbx">${dbxMode?"切断":"接続"}</button>`:""}<button type="button" class="btn" id="fKeys">キーボードショートカット</button>`,"閉じる",()=>{},
   ()=>{$("dlgForm").classList.add("set");syncSettings();$("dCancel").hidden=true;
     $("fThemes").onclick=e=>{const b=e.target.closest(".tile");if(b)setTheme(b.dataset.theme)};
     $("fVbgs").onclick=e=>{const b=e.target.closest(".tile");if(b)setVBg(b.dataset.vbg)};
     $("fTone").onclick=e=>{const b=e.target.closest("button");if(b){pref("tone",b.dataset.v);setTheme(pref("theme"))}};
     $("fThemeFile").onclick=()=>{const i=document.createElement("input");i.type="file";i.accept=".json,application/json";i.onchange=()=>i.files[0]&&importTheme(i.files[0]);i.click()};
-    const b=$("fDbx");if(b)b.onclick=async()=>{if(!dbxMode)return dbx.startAuth();flushSave();await dbx.disconnect();location.reload()}})};
+    $("fKeys").onclick=keysDlg;const b=$("fDbx");if(b)b.onclick=async()=>{if(!dbxMode)return dbx.startAuth();flushSave();await dbx.disconnect();location.reload()}})};
 const TEXT=["txt","md","text","csv","json"];
 async function readText(it){
   if(it.text!=null)return it.text;
@@ -398,18 +464,21 @@ addEventListener("dragleave",()=>{if(--dc<=0){dc=0;$("drop").hidden=true}});
 addEventListener("dragover",e=>e.preventDefault());
 addEventListener("drop",e=>{e.preventDefault();dc=0;$("drop").hidden=true;if(e.dataTransfer.files.length)addFiles([...e.dataTransfer.files])});
 const closeNav=()=>$("app").classList.remove("nav-open");
-$("menuBtn").onclick=()=>$("app").classList.add("nav-open");
+const wide=matchMedia("(min-width:761px)");
+function toggleSide(){if(!wide.matches)return $("app").classList.toggle("nav-open");const c=$("app").classList.toggle("collapsed");try{localStorage.setItem("tehon-side",c?"0":"1")}catch(e){}}
+$("menuBtn").onclick=toggleSide;
+try{if(localStorage.getItem("tehon-side")==="0")$("app").classList.add("collapsed")}catch(e){}
 $("scrim").onclick=closeNav;
 
 /* dialogs */
 function formDlg(title,html,ok,fn,init){
   const f=$("dlgForm");f.className="";f.innerHTML=`<h4></h4>${html}<div class="row"><button type="button" class="btn" id="dCancel">キャンセル</button><button class="btn pri">${ok}</button></div>`;
   f.querySelector("h4").textContent=title;$("dlg").hidden=false;init&&init();f.querySelector("input:not([hidden]),select")?.focus();
-  $("dCancel").onclick=()=>$("dlg").hidden=true;
-  f.onsubmit=e=>{e.preventDefault();$("dlg").hidden=true;fn()};
+  $("dCancel").onclick=()=>{$("dlg").hidden=true;dropImp()};
+  f.onsubmit=e=>{e.preventDefault();$("dlg").hidden=true;fn();dropImp()};
 }
 function confirmDlg(title,msg,fn){formDlg(title,`<div style="color:var(--muted);font-size:13px"></div>`,"削除",fn);$("dlgForm").querySelector("div").textContent=msg}
-$("dlg").addEventListener("keydown",e=>{if(e.key==="Escape")$("dlg").hidden=true});
+$("dlg").addEventListener("keydown",e=>{if(e.key==="Escape"){$("dlg").hidden=true;dropImp()}});
 let tt;function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,2400)}
 
 /* viewer */
@@ -421,7 +490,7 @@ const vt=$("vt");let vtTimer;
 function useEl(el,w,h){[vc,vi,vv,vt].forEach(x=>x.hidden=x!==el);["vIn","vOut","vFit"].forEach(b=>$(b).hidden=el===vt);if(el===vt){V.el=null;return}V.el=el;V.w=w;V.h=h;fitV()}
 function closeViewer(){$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");renderGrid();$("grid").children[V.i]?.focus()}
 function loadV(){
-  cancelAnimationFrame(V.raf);vv.pause();V.video=null;
+  cancelAnimationFrame(V.raf);vv.pause();V.video=null;delete vi.dataset.ph;
   const it=list[V.i];$("vTitle").textContent=it.name;$("vFav").classList.toggle("on",it.favorite);
   const anim=it.kind==="gif"||it.kind==="video";$("vPlay").hidden=!anim||((it.local||it.dbx)&&it.kind==="gif");V.play=true;$("vPlay").textContent="❚❚";
   renderFoot(it);$("vState").textContent="";$("vReload").hidden=true;
@@ -436,7 +505,15 @@ function loadV(){
       else{vi.onload=()=>useEl(vi,vi.naturalWidth,vi.naturalHeight);vi.onerror=()=>toast("プレビューできない形式です");vi.src=src}};
     [vc,vi,vv].forEach(x=>x.hidden=true);V.el=null;
     if(!it.viewable){const t=thumbCache.get(it.id);if(t&&t!==BLANK){show(t);toast("サムネイルを表示しています")}else toast("プレビューできない形式です");return}
-    dbxLink(it).then(show).catch(()=>toast("読み込めませんでした"));
+    if(it.kind==="video"){dbxLink(it).then(show).catch(()=>toast("読み込めませんでした"));prefetchAround();return}
+    const t=thumbCache.get(it.id);
+    if(t&&t!==BLANK){vi.onload=()=>{if(vi.src!==t)return;const w=vi.naturalWidth,h=vi.naturalHeight,r=$("stage").getBoundingClientRect();
+        const k=w<480&&h<320?1:Math.max(r.width/w,r.height/h);useEl(vi,w*k,h*k);vi.dataset.ph="1"};vi.onerror=null;vi.src=t}
+    full(it).then(src=>{if(list[V.i]!==it||$("viewer").hidden)return;
+      vi.onload=()=>{const w=vi.naturalWidth,h=vi.naturalHeight;
+        if(vi.dataset.ph&&V.el===vi&&Math.abs(V.z-V.fit)>.001){V.z*=V.w/w;V.w=w;V.h=h;const r=$("stage").getBoundingClientRect();V.fit=Math.min(r.width/w,r.height/h,1)*.96;applyV()}else useEl(vi,w,h);delete vi.dataset.ph};
+      vi.onerror=()=>toast("プレビューできない形式です");vi.src=src}).catch(()=>toast("読み込めませんでした"));
+    prefetchAround();
     return;
   }
   if(it.local){
@@ -477,7 +554,9 @@ $("vFav").onclick=()=>{const it=list[V.i];it.favorite=!it.favorite;save();$("vFa
 $("vPlay").onclick=()=>{V.play=!V.play;$("vPlay").textContent=V.play?"❚❚":"▶";if(V.video)V.play?V.video.play():V.video.pause()};
 const stage=$("stage");const pts=new Map();let pinch=null;
 const rel=e=>{const r=stage.getBoundingClientRect();return[e.clientX-r.left-r.width/2,e.clientY-r.top-r.height/2]};
-stage.addEventListener("wheel",e=>{if(e.target===vt)return;e.preventDefault();const [x,y]=rel(e);zoomAt(Math.exp(-e.deltaY*.0015),x,y)},{passive:false});
+stage.addEventListener("wheel",e=>{if(e.target===vt)return;e.preventDefault();const [x,y]=rel(e);zoomAt(Math.exp(-e.deltaY*(e.ctrlKey?.01:.0015)),x,y)},{passive:false});
+let gs=1;stage.addEventListener("gesturestart",e=>{e.preventDefault();gs=1});
+stage.addEventListener("gesturechange",e=>{e.preventDefault();if(pts.size>1)return;const [x,y]=rel(e);zoomAt(e.scale/gs,x,y);gs=e.scale});
 stage.addEventListener("pointerdown",e=>{if(e.target===vt)return;stage.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);if(pts.size===2){const [a,b]=[...pts.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])}}});
 stage.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;const p=pts.get(e.pointerId);
   if(pts.size===2&&pinch){pts.set(e.pointerId,[e.clientX,e.clientY]);const [a,b]=[...pts.values()];const d=Math.hypot(a[0]-b[0],a[1]-b[1]);const r=stage.getBoundingClientRect();zoomAt(d/pinch.d,(a[0]+b[0])/2-r.left-r.width/2,(a[1]+b[1])/2-r.top-r.height/2);pinch.d=d;return}
@@ -487,8 +566,9 @@ stage.addEventListener("pointerup",up);stage.addEventListener("pointercancel",up
 let lastTap=0;stage.addEventListener("pointerup",e=>{if(e.target===vt)return;const n=Date.now();if(n-lastTap<300){const [x,y]=rel(e);Math.abs(V.z-V.fit)<.001?zoomAt(2.5/V.z*V.fit>1?2.5:1/V.z,x,y):fitV()}lastTap=n});
 let sx=null;stage.addEventListener("touchstart",e=>{if(e.target===vt){sx=null;return}sx=e.touches.length===1&&Math.abs(V.z-V.fit)<.001?e.touches[0].clientX:null},{passive:true});
 stage.addEventListener("touchend",e=>{if(sx==null)return;const dx=e.changedTouches[0].clientX-sx;if(Math.abs(dx)>70){fitV();dx<0?$("vNext").click():$("vPrev").click()}sx=null});
-document.addEventListener("keydown",e=>{if($("viewer").hidden||e.target.id==="vTagInput")return;if(e.target===vt){if(e.key==="Escape")vt.blur();if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();vt.oninput()}return}
-  ({Escape:closeViewer,ArrowLeft:()=>$("vPrev").click(),ArrowRight:()=>$("vNext").click(),"+":()=>zoomAt(1.25),"=":()=>zoomAt(1.25),"-":()=>zoomAt(.8),"0":fitV,f:()=>$("vFav").click()," ":()=>$("vPlay").click(),t:()=>{e.preventDefault();$("vTagInput").focus()}}[e.key]||(()=>{}))()});
+function vTrash(){const it=list[V.i];if(!it||it.trashed)return;it.trashed=true;save();renderSide();list.splice(V.i,1);toast("ゴミ箱へ移動しました");if(!list.length)return closeViewer();V.i=Math.min(V.i,list.length-1);loadV()}
+document.addEventListener("keydown",e=>{if($("viewer").hidden||e.target.id==="vTagInput")return;if(e.altKey||((e.metaKey||e.ctrlKey)&&e.target!==vt))return;if(e.target===vt){if(e.key==="Escape")vt.blur();if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();vt.oninput()}return}
+  ({Escape:closeViewer,ArrowLeft:()=>$("vPrev").click(),ArrowRight:()=>$("vNext").click(),"+":()=>zoomAt(1.25),"=":()=>zoomAt(1.25),"-":()=>zoomAt(.8),"0":fitV,"1":()=>{if(V.el){V.z=1;V.x=0;V.y=0;applyV()}},Delete:vTrash,Backspace:vTrash,f:()=>$("vFav").click()," ":()=>$("vPlay").click(),t:()=>{e.preventDefault();$("vTagInput").focus()}}[e.key]||(()=>{}))()});
 addEventListener("resize",()=>{if(!$("viewer").hidden)fitV()});
 
 document.querySelectorAll(".sb").forEach(el=>{let t;el.addEventListener("scroll",()=>{el.classList.add("show");clearTimeout(t);t=setTimeout(()=>el.classList.remove("show"),900)},{passive:true})});
