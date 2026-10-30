@@ -11,16 +11,17 @@ export const META_DIR = "/.tehon";
 /* ---------- IndexedDB key/value ---------- */
 const DB = "tehon";
 const STORE = "auth";
-function idb(): Promise<IDBDatabase> {
+function open(name: string, store: string): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
-    const r = indexedDB.open(DB, 1);
-    r.onupgradeneeded = () => r.result.createObjectStore(STORE);
+    const r = indexedDB.open(name, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(store);
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });
 }
+let authDb: Promise<IDBDatabase> | null = null;
 async function kv<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest): Promise<T> {
-  const db = await idb();
+  const db = await (authDb ??= open(DB, STORE).catch(e => ((authDb = null), Promise.reject(e))));
   return new Promise((res, rej) => {
     const r = fn(db.transaction(STORE, mode).objectStore(STORE));
     r.onsuccess = () => res(r.result as T);
@@ -31,22 +32,26 @@ const kvGet = <T>(k: string) => kv<T | undefined>("readonly", s => s.get(k));
 const kvSet = (k: string, v: unknown) => kv("readwrite", s => s.put(v, k));
 const kvDel = (k: string) => kv("readwrite", s => s.delete(k));
 
-/* ---------- refresh token, encrypted with a non-extractable key ---------- */
-async function cryptoKey(): Promise<CryptoKey> {
-  let k = await kvGet<CryptoKey>("key");
-  if (!k) {
-    k = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
-    await kvSet("key", k);
-  }
-  return k;
+/* ---------- tokens, encrypted with a non-extractable key ---------- */
+// One promise for all callers: two saves at once must not each create (and overwrite) the key.
+let keyP: Promise<CryptoKey> | null = null;
+function cryptoKey(): Promise<CryptoKey> {
+  return (keyP ??= (async () => {
+    let k = await kvGet<CryptoKey>("key");
+    if (!k) {
+      k = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+      await kvSet("key", k);
+    }
+    return k;
+  })().catch(e => ((keyP = null), Promise.reject(e))));
 }
-async function saveRefresh(token: string) {
+async function saveSecret(name: string, value: string) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await cryptoKey(), new TextEncoder().encode(token));
-  await kvSet("refresh", { iv, data });
+  const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await cryptoKey(), new TextEncoder().encode(value));
+  await kvSet(name, { iv, data });
 }
-async function loadRefresh(): Promise<string | null> {
-  const v = await kvGet<{ iv: Uint8Array; data: ArrayBuffer }>("refresh");
+async function loadSecret(name: string): Promise<string | null> {
+  const v = await kvGet<{ iv: Uint8Array; data: ArrayBuffer }>(name);
   if (!v) return null;
   try {
     const buf = await crypto.subtle.decrypt({ name: "AES-GCM", iv: v.iv }, await cryptoKey(), v.data);
@@ -55,6 +60,8 @@ async function loadRefresh(): Promise<string | null> {
     return null;
   }
 }
+const saveRefresh = (t: string) => saveSecret("refresh", t);
+const loadRefresh = () => loadSecret("refresh");
 
 /* ---------- PKCE ---------- */
 const b64url = (b: ArrayBuffer | Uint8Array) =>
@@ -87,6 +94,8 @@ async function tokenRequest(body: Record<string, string>) {
   if (!r.ok) throw new DropboxError(r.status, await r.text());
   const j = await r.json();
   access = { token: j.access_token, exp: Date.now() + (j.expires_in - 60) * 1000 };
+  // Kept across reloads so startup doesn't wait for a token refresh before the first API call.
+  saveSecret("access", JSON.stringify(access)).catch(() => {});
   if (j.refresh_token) await saveRefresh(j.refresh_token);
 }
 
@@ -114,7 +123,11 @@ export async function isConnected() {
 }
 
 let refreshing: Promise<string> | null = null;
+let restored: Promise<void> | null = null;
 async function token(): Promise<string> {
+  if (!access) await (restored ??= loadSecret("access").then(v => {
+    if (!access && v) access = JSON.parse(v);
+  }, () => {}));
   if (access && Date.now() < access.exp) return access.token;
   return (refreshing ??= refresh().finally(() => (refreshing = null)));
 }
@@ -127,6 +140,7 @@ async function refresh(): Promise<string> {
     // Revoked or expired refresh token: forget it so the user can connect again.
     if (e instanceof DropboxError && e.status === 400) {
       await kvDel("refresh");
+      await kvDel("access");
       throw new DropboxError(401, e.body);
     }
     throw e;
@@ -140,6 +154,7 @@ export async function disconnect() {
   } catch {}
   access = null;
   await kvDel("refresh");
+  await kvDel("access");
 }
 
 /* ---------- API ---------- */
@@ -166,6 +181,7 @@ async function call(url: string, init: RequestInit, tries = 0): Promise<Response
   const r = await fetch(url, { ...init, headers });
   if (r.status === 401 && tries === 0) {
     access = null;
+    kvDel("access").catch(() => {});
     return call(url, init, 1);
   }
   if ((r.status === 429 || r.status >= 500) && tries < 4) {
@@ -218,20 +234,68 @@ export async function listAll(onPage?: (n: number) => void): Promise<FileMeta[]>
 
 export const THUMB_EXT = ["jpg", "jpeg", "png", "tiff", "tif", "gif", "webp", "ppm", "bmp"];
 
-/** Up to 25 per request. Returns id → data URL; ids Dropbox can't thumbnail are absent. */
-export async function thumbnails(ids: string[]): Promise<Map<string, string>> {
-  const m = new Map<string, string>();
-  for (let i = 0; i < ids.length; i += 25) {
-    const part = ids.slice(i, i + 25);
+/* ---------- local cache of thumbnails and text previews (IndexedDB "tehon-cache") ----------
+   Entries are { rev, value } keyed by file id (text previews: "text:" + id) and used only while rev still matches. */
+const CACHE_STORE = "c";
+let cacheDb: Promise<IDBDatabase> | null = null;
+const cacheStore = async (mode: IDBTransactionMode) =>
+  (await (cacheDb ??= open("tehon-cache", CACHE_STORE).catch(e => ((cacheDb = null), Promise.reject(e))))).transaction(CACHE_STORE, mode).objectStore(CACHE_STORE);
+const done = (t: IDBTransaction) => new Promise<void>((res, rej) => ((t.oncomplete = () => res()), (t.onerror = () => rej(t.error))));
+
+export async function cacheGet<T>(keys: { key: string; rev?: string }[]): Promise<Map<string, T>> {
+  const m = new Map<string, T>();
+  if (!keys.length) return m;
+  const s = await cacheStore("readonly");
+  await new Promise<void>(res => {
+    let n = keys.length;
+    for (const { key, rev = "" } of keys) {
+      const r = s.get(key);
+      r.onsuccess = () => {
+        if (r.result && r.result.rev === rev) m.set(key, r.result.value);
+        if (!--n) res();
+      };
+      r.onerror = () => --n || res();
+    }
+  });
+  return m;
+}
+export async function cacheSet(entries: { key: string; rev?: string; value: unknown }[]) {
+  const s = await cacheStore("readwrite");
+  for (const { key, rev = "", value } of entries) s.put({ rev, value }, key);
+  await done(s.transaction);
+}
+/** Drops cached entries whose file id is not in `keep`. */
+export async function cachePrune(keep: Set<string>) {
+  const s = await cacheStore("readwrite");
+  const r = s.getAllKeys();
+  r.onsuccess = () => {
+    for (const k of r.result as string[]) if (!keep.has(k.startsWith("text:") ? k.slice(5) : k)) s.delete(k);
+  };
+  await done(s.transaction);
+}
+
+/** Up to 25 per request; cached ones come from IndexedDB without a request. `each` is called as soon as a result is known.
+    Returns id → JPEG blob, or null when Dropbox can't thumbnail it. */
+export async function thumbnails(files: { id: string; rev?: string }[], each?: (id: string, b: Blob | null) => void): Promise<Map<string, Blob | null>> {
+  const m = await cacheGet<Blob | null>(files.map(f => ({ key: f.id, rev: f.rev }))).catch(() => new Map<string, Blob | null>());
+  m.forEach((b, id) => each?.(id, b));
+  const miss = files.filter(f => !m.has(f.id));
+  for (let i = 0; i < miss.length; i += 25) {
+    const part = miss.slice(i, i + 25);
     const r = await call(CONTENT + "files/get_thumbnail_batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entries: part.map(path => ({ path, format: "jpeg", size: "w480h320", mode: "fitone_bestfit" })) }),
+      body: JSON.stringify({ entries: part.map(f => ({ path: f.id, format: "jpeg", size: "w480h320", mode: "fitone_bestfit" })) }),
     });
     const j = await r.json();
-    j.entries.forEach((e: any, k: number) => {
-      if (e[".tag"] === "success") m.set(part[k], "data:image/jpeg;base64," + e.thumbnail);
+    const got = part.map((f, k) => {
+      const e = j.entries[k];
+      const b = e[".tag"] === "success" ? new Blob([Uint8Array.from(atob(e.thumbnail), c => c.charCodeAt(0))], { type: "image/jpeg" }) : null;
+      m.set(f.id, b);
+      each?.(f.id, b);
+      return { key: f.id, rev: f.rev, value: b };
     });
+    cacheSet(got).catch(() => {});
   }
   return m;
 }
