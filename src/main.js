@@ -78,6 +78,30 @@ async function pumpThumbs(){
       .catch(()=>ids.forEach(id=>thumbCache.delete(id))).finally(()=>{thumbBusy--;pumpThumbs()});
   }
 }
+/* URL: preview image (og:image) via /api/ogp, shrunk to JPEG and kept in /.tehon/ogp so it survives the page changing */
+const OGP_DIR=dbx.META_DIR+"/ogp";let ogpFiles=new Map(),ogpBusy=0;const ogpQ=[];
+const urlHash=s=>{let a=0x811c9dc5,b=0x9747b28c;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);a=Math.imul(a^c,16777619);b=Math.imul(b^c,2246822507)}return (a>>>0).toString(16).padStart(8,"0")+(b>>>0).toString(16).padStart(8,"0")};
+function urlThumb(it){
+  return it.ogpP||=new Promise(res=>{ogpQ.push(()=>loadOgp(it).then(u=>{if(u)thumbCache.set(it.id,u);res(u)},()=>res(null)));pumpOgp()});
+}
+function pumpOgp(){while(ogpQ.length&&ogpBusy<4){ogpBusy++;ogpQ.shift()().finally(()=>{ogpBusy--;pumpOgp()})}}
+async function loadOgp(it){
+  const name=urlHash(it.url)+".jpg",saved=dbxMode&&ogpFiles.get(name);
+  if(saved)return (await dbx.thumbnails([saved])).get(saved)||null;
+  const r=await fetch("/api/ogp?url="+encodeURIComponent(it.url));
+  if(!r.ok||!(r.headers.get("Content-Type")||"").startsWith("image/"))return null;
+  const bm=await createImageBitmap(await r.blob()),k=Math.min(1,640/bm.width);
+  const cv=document.createElement("canvas");cv.width=Math.round(bm.width*k);cv.height=Math.round(bm.height*k);cv.getContext("2d").drawImage(bm,0,0,cv.width,cv.height);bm.close();
+  const blob=await new Promise(ok=>cv.toBlob(ok,"image/jpeg",.85));if(!blob)return null;
+  if(dbxMode)dbx.upload(OGP_DIR.slice(1),new File([blob],name,{type:"image/jpeg"})).then(e=>ogpFiles.set(name,e.id)).catch(()=>{});
+  return URL.createObjectURL(blob);
+}
+function urlCard(c,it){
+  const u=thumbCache.get(it.id);
+  if(u){const im=document.createElement("img");im.className="th";im.decoding="async";im.alt="";im.src=u;c.prepend(im);return}
+  const d=document.createElement("div");d.className="urlth";d.innerHTML=`<b></b><span></span>`;d.firstChild.textContent=it.name;d.lastChild.textContent=it.url.replace(/^https?:\/\//,"");c.prepend(d);
+  urlThumb(it).then(u=>{if(u&&d.isConnected){d.remove();urlCard(c,it)}});
+}
 // Full-size images: temporary link (dbxLink) + decoded Image kept for a few items, so opening and paging are instant.
 const fullCache=new Map();
 function full(it){
@@ -115,7 +139,8 @@ function dbxItem(e,m){
 async function loadDropbox(){
   $("sync").lastChild.textContent="読み込み中";
   try{
-    const [entries,meta,em]=await Promise.all([dbx.listAll(n=>toast(`読み込み中 ${n} 件`)),dbx.loadMeta(),dbx.loadEagleManifest()]);
+    const [entries,meta,em,og]=await Promise.all([dbx.listAll(n=>toast(`読み込み中 ${n} 件`)),dbx.loadMeta(),dbx.loadEagleManifest(),dbx.listTree(OGP_DIR).catch(()=>[])]);
+    ogpFiles=new Map(og.filter(e=>e[".tag"]==="file").map(e=>[e.name,e.id]));
     own=meta.own;
     const ef=new Map(Object.entries(em?.files||{}).map(([k,v])=>[k.normalize("NFC").toLowerCase(),v]));
     const out=entries.filter(e=>e[".tag"]==="file").map(e=>{const x=ef.get(e.path_lower.normalize("NFC"));const it=dbxItem(e,meta.items[e.id]||x);if(x?.addedAt)it.addedAt=x.addedAt;return it});
@@ -193,7 +218,7 @@ function appendCards(start){
   list.slice(start,start+CHUNK).forEach((it,j)=>{const idx=start+j;
     const c=document.createElement("div");c.className="card"+(st.sel.has(it.id)?" sel":"");c.tabIndex=0;c.dataset.i=idx;
     if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";d.textContent=it.text!=null?it.text.slice(0,400):"…";c.append(d);if(it.text==null&&!(it.dbx&&it.size>2e5))readText(it).then(t=>{d.textContent=t.slice(0,400)})}
-    else if(it.kind==="url"){c.innerHTML=`<div class="urlth"><b></b><span></span></div>`;c.querySelector("b").textContent=it.name;c.querySelector(".urlth span").textContent=it.url.replace(/^https?:\/\//,"")}
+    else if(it.kind==="url")urlCard(c,it);
     else if(it.kind==="video"&&(it.file||it.dbx)){const v=document.createElement("video");v.className="th";v.muted=true;v.loop=true;v.playsInline=true;v.preload="none";
       if(it.thumbFile)v.poster=it.blobUrl;v._it=it;c.append(v);liveObs().observe(v)}
     else{const im=document.createElement("img");im.className="th";im.loading="lazy";im.decoding="async";im.alt="";if(it.dbx)im.dataset.id=it.id;im.src=it.kind==="gif"&&it.file?(it.srcUrl||=URL.createObjectURL(it.file)):thumb(it);
@@ -498,6 +523,7 @@ function loadV(){
   if(it.kind==="text"){useEl(vt);vt.value="";readText(it).then(t=>{if(list[V.i]!==it)return;vt.value=t;vt.readOnly=!!it.readonly;
       $("vState").textContent=it.readonly?(it.enc==="Shift_JIS"&&it.dbx?"Shift_JIS・閲覧のみ":"2MBを超えるため閲覧のみ"):it.enc==="Shift_JIS"?"Shift_JIS":"";$("vReload").hidden=true});
     vt.oninput=()=>{if(it.conflict)return;clearTimeout(vtTimer);$("vState").textContent="編集中";vtTimer=setTimeout(()=>saveText(it,vt.value),600)};return}
+  if(it.kind==="url"&&thumbCache.get(it.id)){vi.onload=()=>useEl(vi,vi.naturalWidth,vi.naturalHeight);vi.onerror=null;vi.src=thumbCache.get(it.id);return}
   if(it.kind==="url"){vc.width=800;vc.height=450;vx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue("--accent");vx.fillRect(0,0,800,450);vx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue("--on-accent");vx.font="500 28px sans-serif";vx.fillText(it.name,40,200);vx.font="20px monospace";vx.fillText(it.url,40,250);useEl(vc,800,450);return}
   if(it.dbx){
     const show=src=>{if(list[V.i]!==it||$("viewer").hidden)return;
