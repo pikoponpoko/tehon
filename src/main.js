@@ -218,7 +218,7 @@ function appendCards(start){
   const g=$("grid");g.querySelector(".more")?.remove();
   const frag=document.createDocumentFragment();
   list.slice(start,start+CHUNK).forEach((it,j)=>{const idx=start+j;
-    const c=document.createElement("div");c.className="card"+(st.sel.has(it.id)?" sel":"");c.tabIndex=0;c.dataset.i=idx;
+    const c=document.createElement("div");c.className="card"+(it.kind==="text"||it.kind==="url"?"":" media")+(st.sel.has(it.id)?" sel":"");c.tabIndex=0;c.dataset.i=idx;
     if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";const put=t=>{d.textContent=t.slice(0,400);d.style.fontSize=txtSize(t)+"px"};if(it.text!=null)put(it.text);else d.textContent="…";c.append(d);if(it.text==null&&!(it.dbx&&it.size>2e5))readText(it).then(put)}
     else if(it.kind==="url")urlCard(c,it);
     else if(it.kind==="video"&&(it.file||it.dbx)){const v=document.createElement("video");v.className="th";v.muted=true;v.loop=true;v.playsInline=true;v.preload="none";
@@ -393,7 +393,8 @@ function seg(id,opts,cur){return`<div class="segc" id="${id}" role="group">${opt
 function syncSettings(){
   document.querySelectorAll("#fThemes .tile").forEach(b=>b.setAttribute("aria-pressed",b.dataset.theme===pref("theme")));
   document.querySelectorAll("#fVbgs .tile").forEach(b=>b.setAttribute("aria-pressed",b.dataset.vbg===(pref("vbg")||"dark")));
-  document.querySelectorAll("#fTone button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===(pref("tone")||"auto")))}
+  document.querySelectorAll("#fTone button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===(pref("tone")||"auto")));
+  document.querySelectorAll("#fNames button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===(pref("names")||"on")))}
 function importTheme(file){file.text().then(txt=>{
   const j=JSON.parse(txt),list=j.format==="vconte-theme-set"?j.themes:[j],hex=/^#[0-9a-f]{6}$/i,cu=customThemes();let last=null;
   for(const x of list){const l=THEME_KEYS.map(k=>x.light?.app?.[k]),d=THEME_KEYS.map(k=>x.dark?.app?.[k]);
@@ -404,15 +405,18 @@ function importTheme(file){file.text().then(txt=>{
 }).catch(()=>toast("テーマのファイルではありません"))}
 function setVBg(b){["dark","blur","light"].forEach(x=>$("viewer").classList.toggle("bg-"+x,x===b&&x!=="dark"));document.querySelectorAll(".swatch").forEach(w=>w.classList.toggle("on",w.dataset.bg===b));pref("vbg",b);syncSettings()}
 document.querySelectorAll(".swatch").forEach(w=>w.onclick=()=>setVBg(w.dataset.bg));
-setTheme(pref("theme"));setVBg(pref("vbg")||"dark");
+const setNames=v=>{pref("names",v);document.body.classList.toggle("no-names",v==="off");syncSettings()};
+setTheme(pref("theme"));setVBg(pref("vbg")||"dark");setNames(pref("names")||"on");
 const H=t=>`<div class="sh">${t}</div>`;
 $("setBtn").onclick=()=>{closeNav();
   formDlg("設定",`${H("カラーテーマ")}${seg("fTone",[["auto","自動"],["light","ライト"],["dark","ダーク"]],pref("tone")||"auto")}<div class="tiles" id="fThemes">${themeTiles()}</div><button type="button" class="btn" id="fThemeFile">テーマを読み込む（.json）</button>
   ${H("ビューアの背景")}<div class="tiles" id="fVbgs">${VBGS.map(([v,l,sw])=>tile("vbg",v,l,sw)).join("")}</div>
+  ${H("ファイル名")}${seg("fNames",[["on","表示"],["off","非表示"]],pref("names")||"on")}
   ${dbx.isConfigured()?`${H("Dropbox")}<button type="button" class="btn" id="fDbx">${dbxMode?"切断":"接続"}</button>`:""}<button type="button" class="btn" id="fKeys">キーボードショートカット</button>`,"閉じる",()=>{},
   ()=>{$("dlgForm").classList.add("set");syncSettings();$("dCancel").hidden=true;
     $("fThemes").onclick=e=>{const b=e.target.closest(".tile");if(b)setTheme(b.dataset.theme)};
     $("fVbgs").onclick=e=>{const b=e.target.closest(".tile");if(b)setVBg(b.dataset.vbg)};
+    $("fNames").onclick=e=>{const b=e.target.closest("button");if(b)setNames(b.dataset.v)};
     $("fTone").onclick=e=>{const b=e.target.closest("button");if(b){pref("tone",b.dataset.v);setTheme(pref("theme"))}};
     $("fThemeFile").onclick=()=>{const i=document.createElement("input");i.type="file";i.accept=".json,application/json";i.onchange=()=>i.files[0]&&importTheme(i.files[0]);i.click()};
     $("fKeys").onclick=keysDlg;const b=$("fDbx");if(b)b.onclick=async()=>{if(!dbxMode)return dbx.startAuth();flushSave();await dbx.disconnect();location.reload()}})};
