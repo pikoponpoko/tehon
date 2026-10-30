@@ -116,7 +116,14 @@ function full(it){
   while(fullCache.size>8)fullCache.delete(fullCache.keys().next().value);
   return p;
 }
-function prefetch(it){if(!it?.dbx||!it.viewable)return;it.kind==="video"?dbxLink(it).catch(()=>{}):it.kind!=="text"&&it.kind!=="url"&&full(it).catch(()=>{})}
+// Neighbouring videos buffer in detached <video> elements that are swapped into the stage when shown.
+const vidPool=new Map();
+function preVideo(it){
+  if(vidPool.has(it.id))return;vidPool.set(it.id,null);
+  dbxLink(it).then(l=>{if(!vidPool.has(it.id))return;const v=document.createElement("video");v.muted=true;v.loop=true;v.playsInline=true;v.preload="auto";v.src=l;vidPool.set(it.id,v)}).catch(()=>vidPool.delete(it.id));
+  while(vidPool.size>3){const [k,v]=vidPool.entries().next().value;vidPool.delete(k);if(v){v.removeAttribute("src");v.load()}}
+}
+function prefetch(it){if(!it?.dbx||!it.viewable)return;it.kind==="video"?preVideo(it):it.kind!=="text"&&it.kind!=="url"&&full(it).catch(()=>{})}
 function prefetchAround(){for(const d of[1,-1,2])prefetch(list[V.i+d])}
 const VIEW_EXT=["jpg","jpeg","png","gif","webp","bmp","svg","avif","ico"],VID_EXT=["mp4","webm","mov","m4v","ogv"],TXT_EXT=["txt","md","text","csv","json"];
 /* text thumbnail: fewer characters → larger type */
@@ -535,12 +542,12 @@ let tt;function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clear
 const V={i:0,z:1,x:0,y:0,fit:1,raf:0,play:true,img:null,video:null};
 const vc=$("vc"),vx=vc.getContext("2d");
 function openViewer(i){V.i=i;$("viewer").hidden=false;loadV()}
-const vi=$("vi"),vv=$("vv");
+const vi=$("vi");let vv=$("vv");
 const vt=$("vt");let vtTimer;
-function useEl(el,w,h){[vc,vi,vv,vt].forEach(x=>x.hidden=x!==el);["vIn","vOut","vFit"].forEach(b=>$(b).hidden=el===vt);if(el===vt){V.el=null;return}V.el=el;V.w=w;V.h=h;fitV()}
-function closeViewer(){$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");renderGrid();$("grid").children[V.i]?.focus()}
+function useEl(el,w,h){[vc,vi,vv,vt].forEach(x=>x.hidden=x!==el);["vIn","vOut","vFit"].forEach(b=>$(b).hidden=el===vt);if(el===vt){V.el=null;V.enter=null;return}V.el=el;V.w=w;V.h=h;fitV()}
+function closeViewer(){settle(true);V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");renderGrid();$("grid").children[V.i]?.focus()}
 function loadV(){
-  cancelAnimationFrame(V.raf);vv.pause();V.video=null;delete vi.dataset.ph;
+  settle(true);cancelAnimationFrame(V.raf);vv.pause();V.video=null;delete vi.dataset.ph;
   const it=list[V.i];$("vTitle").textContent=it.name;$("vFav").classList.toggle("on",it.favorite);
   const anim=it.kind==="gif"||it.kind==="video";$("vPlay").hidden=!anim||((it.local||it.dbx)&&it.kind==="gif");V.play=true;$("vPlay").textContent="❚❚";
   renderFoot(it);$("vState").textContent="";$("vReload").hidden=true;
@@ -552,14 +559,26 @@ function loadV(){
   if(it.kind==="url"){vc.width=800;vc.height=450;vx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue("--accent");vx.fillRect(0,0,800,450);vx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue("--on-accent");vx.font="500 28px sans-serif";vx.fillText(it.name,40,200);vx.font="20px monospace";vx.fillText(it.url,40,250);useEl(vc,800,450);return}
   if(it.dbx){
     const show=src=>{if(list[V.i]!==it||$("viewer").hidden)return;
-      if(it.kind==="video"){V.video=vv;vv.onloadedmetadata=()=>{useEl(vv,vv.videoWidth,vv.videoHeight);vv.play()};vv.onerror=()=>toast("この動画形式はブラウザで再生できません");vv.src=src}
+      if(it.kind==="video"){V.video=vv;vv.onloadeddata=null;vv.onloadedmetadata=()=>{useEl(vv,vv.videoWidth,vv.videoHeight);vv.play()};vv.onerror=()=>toast("この動画形式はブラウザで再生できません");vv.src=src}
       else{vi.onload=()=>useEl(vi,vi.naturalWidth,vi.naturalHeight);vi.onerror=()=>toast("プレビューできない形式です");vi.src=src}};
     [vc,vi,vv].forEach(x=>x.hidden=true);V.el=null;
     if(!it.viewable){const t=thumbCache.get(it.id);if(t&&t!==BLANK){show(t);toast("サムネイルを表示しています")}else toast("プレビューできない形式です");return}
-    if(it.kind==="video"){dbxLink(it).then(show).catch(()=>toast("読み込めませんでした"));prefetchAround();return}
-    const t=thumbCache.get(it.id);
-    if(t&&t!==BLANK){vi.onload=()=>{if(vi.src!==t)return;const w=vi.naturalWidth,h=vi.naturalHeight,r=$("stage").getBoundingClientRect();
-        const k=w<480&&h<320?1:Math.max(r.width/w,r.height/h);useEl(vi,w*k,h*k);vi.dataset.ph="1"};vi.onerror=null;vi.src=t}
+    // The thumbnail stands in at the final size until the full image or the video's first frame is ready.
+    const t=thumbCache.get(it.id),ph=()=>{if(!t||t===BLANK)return;vi.onload=()=>{if(vi.src!==t||V.el===vv)return;const w=vi.naturalWidth,h=vi.naturalHeight,r=$("stage").getBoundingClientRect();
+        const k=it.w&&it.h?it.w/w:w<480&&h<320?1:Math.max(r.width/w,r.height/h);useEl(vi,w*k,it.w&&it.h?it.h:h*k);vi.dataset.ph="1"};vi.onerror=null;vi.src=t};
+    if(it.kind==="video"){
+      const pre=vidPool.get(it.id);vidPool.delete(it.id);
+      if(pre){pre.id="vv";pre.hidden=true;vv.replaceWith(pre);vv.removeAttribute("src");vv.load();vv=pre}
+      V.video=vv;vv.onloadedmetadata=null;vv.onerror=()=>toast("この動画形式はブラウザで再生できません");
+      const ready=()=>{if(list[V.i]!==it||$("viewer").hidden)return;useEl(vv,vv.videoWidth,vv.videoHeight);if(V.play)vv.play().catch(()=>{})};
+      if(pre&&pre.readyState>=2){ready();prefetchAround();return}
+      ph();vv.onloadeddata=ready;
+      if(pre)vv.play().catch(()=>{});
+      else dbxLink(it).then(l=>{if(list[V.i]!==it||$("viewer").hidden)return;vv.src=l;vv.play().catch(()=>{})}).catch(()=>toast("読み込めませんでした"));
+      prefetchAround();return}
+    const c=fullCache.get(it.id);
+    if(c&&c.im.complete&&c.im.naturalWidth&&Date.now()<it.linkExp){vi.onload=vi.onerror=null;vi.src=c.im.src;useEl(vi,c.im.naturalWidth,c.im.naturalHeight);prefetchAround();return}
+    ph();
     full(it).then(src=>{if(list[V.i]!==it||$("viewer").hidden)return;
       vi.onload=()=>{const w=vi.naturalWidth,h=vi.naturalHeight;
         if(vi.dataset.ph&&V.el===vi&&Math.abs(V.z-V.fit)>.001){V.z*=V.w/w;V.w=w;V.h=h;const r=$("stage").getBoundingClientRect();V.fit=Math.min(r.width/w,r.height/h,1)*.96;applyV()}else useEl(vi,w,h);delete vi.dataset.ph};
@@ -570,7 +589,7 @@ function loadV(){
   if(it.local){
     const src=it.file&&it.viewable!==false?(it.srcUrl||=URL.createObjectURL(it.file)):it.blobUrl;
     if(!src){toast("プレビューできない形式です");return}
-    if(it.kind==="video"){V.video=vv;vv.onloadedmetadata=()=>{useEl(vv,vv.videoWidth,vv.videoHeight);vv.play()};vv.onerror=()=>toast("この動画形式はブラウザで再生できません");vv.src=src;return}
+    if(it.kind==="video"){V.video=vv;vv.onloadeddata=null;vv.onloadedmetadata=()=>{useEl(vv,vv.videoWidth,vv.videoHeight);vv.play()};vv.onerror=()=>toast("この動画形式はブラウザで再生できません");vv.src=src;return}
     vi.onload=()=>useEl(vi,vi.naturalWidth,vi.naturalHeight);vi.onerror=()=>toast("プレビューできない形式です");vi.src=src;
     if(it.viewable===false&&it.blobUrl)toast("サムネイルを表示しています");return;
   }
@@ -594,13 +613,24 @@ function renderFoot(it){
   const p=document.createElement("span");p.className="path";p.textContent=`/${it.folder}${it.w?` · ${it.w}×${it.h}`:""}`;
   f.append(inp,dl,p);
 }
-function fitV(){if(!V.el||V.el===vt)return;const r=$("stage").getBoundingClientRect();V.fit=Math.min(r.width/V.w,r.height/V.h,1)*.96;V.z=V.fit;V.x=0;V.y=0;applyV()}
+function fitV(){if(!V.el||V.el===vt)return;const r=$("stage").getBoundingClientRect();V.fit=Math.min(r.width/V.w,r.height/V.h,1)*.96;V.z=V.fit;V.x=0;V.y=0;
+  const e=V.enter;V.enter=null;if(!e||settle.busy)return applyV();
+  // Paging: a swipe brings the next item in from the screen edge; buttons and keys slide it a short way while fading in.
+  V.x=e.d*(e.far?r.width/2+V.w*V.z/2:Math.min(r.width*.12,60));V.el.style.transition="none";if(!e.far)V.el.style.opacity="0";applyV();V.el.offsetWidth;glide(0,e.far?240:160)}
+// Animated move of the shown item to V.x=x; settle() jumps any running move to its end.
+function glide(x,ms,done){settle();const el=V.el;V.x=x;V.y=0;if(!el){done&&done();return}
+  el.style.transition=`transform ${ms}ms cubic-bezier(.2,.8,.3,1),opacity ${ms}ms`;el.style.opacity="";applyV();
+  settle.busy={el,done,t:setTimeout(settle,ms)}}
+function settle(drop){const b=settle.busy;if(!b)return;settle.busy=null;clearTimeout(b.t);b.el.style.transition="";b.el.style.opacity="";if(!drop)b.done&&b.done()}
+function go(d,far){const j=V.i+d;if(j<0||j>=list.length){if(V.x)glide(0,200);return}
+  const next=()=>{V.i=j;V.enter={d,far};loadV()};
+  if(far&&V.el){const w=stage.clientWidth;glide(-d*(w/2+V.w*V.z/2),Math.max(90,Math.min(200,(w-Math.abs(V.x))/1.5)),next)}else{settle();next()}}
 function applyV(){if(!V.el)return;V.el.style.width=V.w+"px";V.el.style.height=V.h+"px";V.el.style.transform=`translate(${V.x-V.w*V.z/2}px,${V.y-V.h*V.z/2}px) scale(${V.z})`;$("vZoom").textContent=Math.round(V.z*100)+"%"}
 function zoomAt(f,cx=0,cy=0){if(!V.el)return;const nz=Math.max(.05,Math.min(16,V.z*f));const k=nz/V.z;V.x=cx-(cx-V.x)*k;V.y=cy-(cy-V.y)*k;V.z=nz;applyV()}
 $("vIn").onclick=()=>zoomAt(1.25);$("vOut").onclick=()=>zoomAt(.8);
 $("vFit").onclick=()=>{if(Math.abs(V.z-V.fit)<.001){V.z=1;V.x=0;V.y=0;applyV()}else fitV()};
 $("vClose").onclick=closeViewer;
-$("vPrev").onclick=()=>{if(V.i>0){V.i--;loadV()}};$("vNext").onclick=()=>{if(V.i<list.length-1){V.i++;loadV()}};
+$("vPrev").onclick=()=>go(-1);$("vNext").onclick=()=>go(1);
 $("vFav").onclick=()=>{const it=list[V.i];it.favorite=!it.favorite;save();$("vFav").classList.toggle("on",it.favorite);renderSide()};
 $("vPlay").onclick=()=>{V.play=!V.play;$("vPlay").textContent=V.play?"❚❚":"▶";if(V.video)V.play?V.video.play():V.video.pause()};
 const stage=$("stage");const pts=new Map();let pinch=null;
@@ -608,15 +638,22 @@ const rel=e=>{const r=stage.getBoundingClientRect();return[e.clientX-r.left-r.wi
 stage.addEventListener("wheel",e=>{if(e.target===vt)return;e.preventDefault();const [x,y]=rel(e);zoomAt(Math.exp(-e.deltaY*(e.ctrlKey?.01:.0015)),x,y)},{passive:false});
 let gs=1;stage.addEventListener("gesturestart",e=>{e.preventDefault();gs=1});
 stage.addEventListener("gesturechange",e=>{e.preventDefault();if(pts.size>1)return;const [x,y]=rel(e);zoomAt(e.scale/gs,x,y);gs=e.scale});
-stage.addEventListener("pointerdown",e=>{if(e.target===vt)return;stage.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);if(pts.size===2){const [a,b]=[...pts.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])}}});
+// Swipe (touch/pen at fit size): the item follows the finger sideways; release past 20% of the width or with a flick to page, otherwise it springs back.
+let sw=null,swiped=false;
+stage.addEventListener("pointerdown",e=>{if(e.target===vt)return;stage.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);
+  if(pts.size===1&&e.pointerType!=="mouse"&&(!V.el||Math.abs(V.z-V.fit)<.001)){settle();sw={x:V.x,t:performance.now(),v:0,moved:0}}else sw=null;
+  if(pts.size===2){const [a,b]=[...pts.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])}}});
 stage.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;const p=pts.get(e.pointerId);
   if(pts.size===2&&pinch){pts.set(e.pointerId,[e.clientX,e.clientY]);const [a,b]=[...pts.values()];const d=Math.hypot(a[0]-b[0],a[1]-b[1]);const r=stage.getBoundingClientRect();zoomAt(d/pinch.d,(a[0]+b[0])/2-r.left-r.width/2,(a[1]+b[1])/2-r.top-r.height/2);pinch.d=d;return}
+  if(sw){const dx=e.clientX-p[0],n=performance.now(),edge=(V.i===0&&V.x+dx>0)||(V.i===list.length-1&&V.x+dx<0);
+    sw.moved+=Math.abs(dx);sw.v=dx/Math.max(1,n-sw.t);sw.t=n;V.x+=edge?dx*.35:dx;pts.set(e.pointerId,[e.clientX,e.clientY]);applyV();return}
   V.x+=e.clientX-p[0];V.y+=e.clientY-p[1];pts.set(e.pointerId,[e.clientX,e.clientY]);applyV()});
-const up=e=>{const p=pts.get(e.pointerId);pts.delete(e.pointerId);if(pts.size<2)pinch=null};
+const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(!sw||pts.size)return;const s=sw;sw=null;swiped=s.moved>10;
+  if(e.type==="pointercancel"){glide(0,200);return}
+  const d=V.x<-stage.clientWidth*.2||(s.v<-.4&&V.x<-20)?1:V.x>stage.clientWidth*.2||(s.v>.4&&V.x>20)?-1:0;
+  if(d&&list[V.i+d])go(d,true);else if(V.x)glide(0,200)};
 stage.addEventListener("pointerup",up);stage.addEventListener("pointercancel",up);
-let lastTap=0;stage.addEventListener("pointerup",e=>{if(e.target===vt)return;const n=Date.now();if(n-lastTap<300){const [x,y]=rel(e);Math.abs(V.z-V.fit)<.001?zoomAt(2.5/V.z*V.fit>1?2.5:1/V.z,x,y):fitV()}lastTap=n});
-let sx=null;stage.addEventListener("touchstart",e=>{if(e.target===vt){sx=null;return}sx=e.touches.length===1&&Math.abs(V.z-V.fit)<.001?e.touches[0].clientX:null},{passive:true});
-stage.addEventListener("touchend",e=>{if(sx==null)return;const dx=e.changedTouches[0].clientX-sx;if(Math.abs(dx)>70){fitV();dx<0?$("vNext").click():$("vPrev").click()}sx=null});
+let lastTap=0;stage.addEventListener("pointerup",e=>{if(e.target===vt)return;const n=Date.now();if(swiped){swiped=false;lastTap=0;return}if(n-lastTap<300){const [x,y]=rel(e);Math.abs(V.z-V.fit)<.001?zoomAt(2.5/V.z*V.fit>1?2.5:1/V.z,x,y):fitV()}lastTap=n});
 function vTrash(){const it=list[V.i];if(!it||it.trashed)return;it.trashed=true;save();renderSide();list.splice(V.i,1);toast("ゴミ箱へ移動しました");if(!list.length)return closeViewer();V.i=Math.min(V.i,list.length-1);loadV()}
 document.addEventListener("keydown",e=>{if($("viewer").hidden||e.target.id==="vTagInput")return;if(e.altKey||((e.metaKey||e.ctrlKey)&&e.target!==vt))return;if(e.target===vt){if(e.key==="Escape")vt.blur();if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();vt.oninput()}return}
   ({Escape:closeViewer,ArrowLeft:()=>$("vPrev").click(),ArrowRight:()=>$("vNext").click(),"+":()=>zoomAt(1.25),"=":()=>zoomAt(1.25),"-":()=>zoomAt(.8),"0":fitV,"1":()=>{if(V.el){V.z=1;V.x=0;V.y=0;applyV()}},Delete:vTrash,Backspace:vTrash,f:()=>$("vFav").click()," ":()=>$("vPlay").click(),t:()=>{e.preventDefault();$("vTagInput").focus()}}[e.key]||(()=>{}))()});
