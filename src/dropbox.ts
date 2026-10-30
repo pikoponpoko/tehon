@@ -279,11 +279,11 @@ try {
   indexedDB.deleteDatabase("tehon-cache");
 } catch {}
 
-/** Up to 25 per request; cached ones come from IndexedDB without a request. `each` is called as soon as a result is known.
+/** Up to 25 per request; cached ones (unless `fresh`) come from IndexedDB without a request. `each` is called as soon as a result is known.
     Returns id → JPEG blob, or null when Dropbox can't thumbnail it. */
-export async function thumbnails(files: { id: string; rev?: string }[], each?: (id: string, b: Blob | null) => void): Promise<Map<string, Blob | null>> {
+export async function thumbnails(files: { id: string; rev?: string; fresh?: boolean }[], each?: (id: string, b: Blob | null) => void): Promise<Map<string, Blob | null>> {
   const m = new Map<string, Blob | null>();
-  const saved = await cacheGet<ArrayBuffer>(files.map(f => ({ key: f.id, rev: f.rev }))).catch(() => new Map<string, ArrayBuffer>());
+  const saved = await cacheGet<ArrayBuffer>(files.filter(f => !f.fresh).map(f => ({ key: f.id, rev: f.rev }))).catch(() => new Map<string, ArrayBuffer>());
   saved.forEach((buf, id) => {
     if (!(buf instanceof ArrayBuffer) || !buf.byteLength) return;
     const b = new Blob([buf], { type: "image/jpeg" });

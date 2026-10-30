@@ -78,7 +78,7 @@ function thumb(it){
 /* Dropbox */
 // Thumbnails are asked for when a card comes near the screen; saved ones come from IndexedDB, the rest in small parallel batches.
 const thumbQ=[],thumbAsked=new Set();let thumbBusy=0,thumbT;
-function queueThumb(it){if(thumbAsked.has(it.id))return;thumbAsked.add(it.id);thumbQ.push({id:it.id,rev:it.rev});clearTimeout(thumbT);thumbT=setTimeout(pumpThumbs,16)}
+function queueThumb(it,fresh=false){if(thumbAsked.has(it.id))return;thumbAsked.add(it.id);thumbQ.push({id:it.id,rev:it.rev,fresh});clearTimeout(thumbT);thumbT=setTimeout(pumpThumbs,16)}
 function setThumb(id,b){const u=b?URL.createObjectURL(b):BLANK;thumbCache.set(id,u);if(b)document.querySelectorAll(`img[data-id="${CSS.escape(id)}"]`).forEach(im=>im.src=u)}
 function pumpThumbs(){
   while(thumbQ.length&&thumbBusy<6){
@@ -263,6 +263,8 @@ function appendCards(start){
       if(it.thumbFile)v.poster=it.blobUrl;v._it=it;c.append(v);liveObs().observe(v)}
     else{const im=document.createElement("img");im.className="th";im.loading="lazy";im.decoding="async";im.alt="";if(it.dbx)im.dataset.id=it.id;im.src=it.kind==="gif"&&it.file?(it.srcUrl||=URL.createObjectURL(it.file)):thumb(it);
       if(it.dbx&&it.thumbable&&!thumbCache.has(it.id)){im._th=it;thumbObs().observe(im)}
+      // An image that fails to load collapses to nothing, which hides the card: show the blank and fetch it again from Dropbox.
+      if(it.dbx)im.onerror=()=>{if(!im.src.startsWith("blob:"))return;im.src=BLANK;if(!it.thumbable)return;thumbCache.delete(it.id);thumbAsked.delete(it.id);queueThumb(it,true)}
       if(it.kind==="gif"&&it.dbx){im._it=it;liveObs().observe(im)}c.append(im)}
     if(it.kind!=="image"||it.badge){const k=document.createElement("span");k.className="kind";k.textContent=(it.badge||it.kind).toUpperCase();c.append(k)}
     const ck=document.createElement("span");ck.className="chk";ck.textContent="✓";c.append(ck);
