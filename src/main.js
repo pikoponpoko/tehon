@@ -616,7 +616,7 @@ function renderFoot(it){
 function fitV(){if(!V.el||V.el===vt)return;const r=$("stage").getBoundingClientRect();V.fit=Math.min(r.width/V.w,r.height/V.h,1)*.96;V.z=V.fit;V.x=0;V.y=0;
   const e=V.enter;V.enter=null;if(!e||settle.busy)return applyV();
   // Paging: a swipe brings the next item in from the screen edge; buttons and keys slide it a short way while fading in.
-  V.x=e.d*(e.far?r.width/2+V.w*V.z/2:Math.min(r.width*.12,60));V.el.style.transition="none";if(!e.far)V.el.style.opacity="0";applyV();V.el.offsetWidth;glide(0,e.far?240:160)}
+  V.x=e.d*(e.far?r.width/2+V.w*V.z/2:Math.min(r.width*.12,60));V.el.style.transition="none";if(!e.far)V.el.style.opacity="0";applyV();V.el.offsetWidth;glide(0,e.far?170:110)}
 // Animated move of the shown item to V.x=x; settle() jumps any running move to its end.
 function glide(x,ms,done){settle();const el=V.el;V.x=x;V.y=0;if(!el){done&&done();return}
   el.style.transition=`transform ${ms}ms cubic-bezier(.2,.8,.3,1),opacity ${ms}ms`;el.style.opacity="";applyV();
@@ -624,7 +624,7 @@ function glide(x,ms,done){settle();const el=V.el;V.x=x;V.y=0;if(!el){done&&done(
 function settle(drop){const b=settle.busy;if(!b)return;settle.busy=null;clearTimeout(b.t);b.el.style.transition="";b.el.style.opacity="";if(!drop)b.done&&b.done()}
 function go(d,far){const j=V.i+d;if(j<0||j>=list.length){if(V.x)glide(0,200);return}
   const next=()=>{V.i=j;V.enter={d,far};loadV()};
-  if(far&&V.el){const w=stage.clientWidth;glide(-d*(w/2+V.w*V.z/2),Math.max(90,Math.min(200,(w-Math.abs(V.x))/1.5)),next)}else{settle();next()}}
+  if(far&&V.el){const w=stage.clientWidth;glide(-d*(w/2+V.w*V.z/2),Math.max(60,Math.min(130,(w-Math.abs(V.x))/2.5)),next)}else{settle();next()}}
 function applyV(){if(!V.el)return;V.el.style.width=V.w+"px";V.el.style.height=V.h+"px";V.el.style.transform=`translate(${V.x-V.w*V.z/2}px,${V.y-V.h*V.z/2}px) scale(${V.z})`;$("vZoom").textContent=Math.round(V.z*100)+"%"}
 function zoomAt(f,cx=0,cy=0){if(!V.el)return;const nz=Math.max(.05,Math.min(16,V.z*f));const k=nz/V.z;V.x=cx-(cx-V.x)*k;V.y=cy-(cy-V.y)*k;V.z=nz;applyV()}
 $("vIn").onclick=()=>zoomAt(1.25);$("vOut").onclick=()=>zoomAt(.8);
@@ -638,7 +638,7 @@ const rel=e=>{const r=stage.getBoundingClientRect();return[e.clientX-r.left-r.wi
 stage.addEventListener("wheel",e=>{if(e.target===vt)return;e.preventDefault();const [x,y]=rel(e);zoomAt(Math.exp(-e.deltaY*(e.ctrlKey?.01:.0015)),x,y)},{passive:false});
 let gs=1;stage.addEventListener("gesturestart",e=>{e.preventDefault();gs=1});
 stage.addEventListener("gesturechange",e=>{e.preventDefault();if(pts.size>1)return;const [x,y]=rel(e);zoomAt(e.scale/gs,x,y);gs=e.scale});
-// Swipe (touch/pen at fit size): the item follows the finger sideways; release past 20% of the width or with a flick to page, otherwise it springs back.
+// Swipe (touch/pen at fit size): the item follows the finger sideways; release past 15% of the width or with a flick to page, otherwise it springs back.
 let sw=null,swiped=false;
 stage.addEventListener("pointerdown",e=>{if(e.target===vt)return;stage.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);
   if(pts.size===1&&e.pointerType!=="mouse"&&(!V.el||Math.abs(V.z-V.fit)<.001)){settle();sw={x:V.x,t:performance.now(),v:0,moved:0}}else sw=null;
@@ -650,7 +650,7 @@ stage.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;const p
   V.x+=e.clientX-p[0];V.y+=e.clientY-p[1];pts.set(e.pointerId,[e.clientX,e.clientY]);applyV()});
 const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(!sw||pts.size)return;const s=sw;sw=null;swiped=s.moved>10;
   if(e.type==="pointercancel"){glide(0,200);return}
-  const d=V.x<-stage.clientWidth*.2||(s.v<-.4&&V.x<-20)?1:V.x>stage.clientWidth*.2||(s.v>.4&&V.x>20)?-1:0;
+  const d=V.x<-stage.clientWidth*.15||(s.v<-.3&&V.x<-15)?1:V.x>stage.clientWidth*.15||(s.v>.3&&V.x>15)?-1:0;
   if(d&&list[V.i+d])go(d,true);else if(V.x)glide(0,200)};
 stage.addEventListener("pointerup",up);stage.addEventListener("pointercancel",up);
 let lastTap=0;stage.addEventListener("pointerup",e=>{if(e.target===vt)return;const n=Date.now();if(swiped){swiped=false;lastTap=0;return}if(n-lastTap<300){const [x,y]=rel(e);Math.abs(V.z-V.fit)<.001?zoomAt(2.5/V.z*V.fit>1?2.5:1/V.z,x,y):fitV()}lastTap=n});
