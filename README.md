@@ -16,7 +16,6 @@ npm run build:demo   # dist-demo/index.html（デモデータ・1ファイル）
 - App folder 型、PKCE（App secret なし）
 - Redirect URI は `<公開URL>/`。ローカル開発は `http://localhost:5173/`
 
-## Cloudflare Pages
+## Cloudflare
 
-- Build command: `npm run build`
-- Build output directory: `dist`
+Workers（静的アセット）として公開。設定は `wrangler.jsonc`。Workers Builds の Deploy command は `npx wrangler deploy` のままでよい（ビルドも行う）。
