@@ -101,7 +101,7 @@ select.btn{padding-right:8px}
 .chk{position:absolute;top:6px;right:6px;width:20px;height:20px;border-radius:50%;border:2px solid #fff;background:rgba(10,14,22,.35);display:none;align-items:center;justify-content:center;color:#fff;font-size:12px}
 .selecting .chk,.card:hover .chk{display:flex}
 .card.sel .chk{display:flex;background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
-.empty{color:var(--muted);text-align:center;padding:60px 0}
+.empty{color:var(--muted);text-align:center;padding:60px 0;grid-column:1/-1;column-span:all}
 .urlth{aspect-ratio:1;display:flex;flex-direction:column;justify-content:flex-end;padding:12px;gap:4px;background:var(--accent-soft);color:var(--accent-ink);font-size:12px;word-break:break-all}
 .urlth b{font-size:13px;color:var(--fg)}
 /* viewer */
