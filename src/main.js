@@ -415,7 +415,7 @@ function dropImp(){if(!st.imp)return;st.imp=false;st.sel.clear();renderGrid();re
 function rangeTo(i){if(st.anchor==null)st.anchor=curIdx()??i;st.sel.clear();const a=Math.min(st.anchor,i),b=Math.max(st.anchor,i);for(let k=a;k<=b;k++)st.sel.add(list[k].id);renderGrid();renderSel();focusCard(i)}
 function keysDlg(){const m=MAC?"⌘":"Ctrl";
   const K=[[L("一覧"),[["← → ↑ ↓",L("移動")],["Shift + ← → ↑ ↓",L("範囲選択")],["Home / End",L("先頭 / 末尾")],["Enter",L("開く")],["Space",L("選択")],[m+" + A",L("すべて選択")],["Esc",L("選択解除")],["F",L("お気に入り")],["T",L("タグを追加")],["M",L("移動")],["Delete",L("ゴミ箱へ")],["/ , "+m+" + F",L("検索")],["N",L("追加")],["+ / -",L("列数")],["1〜9 / 0",L("列数を指定 / 自動")],["S",L("サイドバー")],["G",L("グリッド / ウォーターフォール")]]],
-    [L("ビューア"),[["← →",L("前 / 次")],["+ / - / 0",L("拡大 / 縮小 / 全体")],["1","100%"],["↑ ↓",L("前 / 次のページ")],["Space",L("再生 / 停止")],["F",L("お気に入り")],["T",L("タグ")],["Delete",L("ゴミ箱へ")],["Esc",L("閉じる")]]]];
+    [L("ビューア"),[["← →",L("前 / 次")],["+ / - / 0",L("拡大 / 縮小 / 全体")],[m+" + "+L("ホイール"),L("拡大 / 縮小")],["1","100%"],["↑ ↓",L("前 / 次のページ")],["Space",L("再生 / 停止")],["F",L("お気に入り")],["T",L("タグ")],["Delete",L("ゴミ箱へ")],["Esc",L("閉じる")]]]];
   formDlg(L("キーボードショートカット"),K.map(([h,r])=>`<div class="keys"><b>${h}</b>${r.map(([k,l])=>`<span>${l}</span><kbd>${esc(k)}</kbd>`).join("")}</div>`).join(""),L("閉じる"),()=>{},()=>{$("dCancel").hidden=true;$("dlgForm").querySelector(".pri").focus()})}
 document.addEventListener("keydown",e=>{
   if(!$("viewer").hidden||!$("dlg").hidden||e.altKey||e.isComposing)return;
@@ -556,12 +556,14 @@ const homeSec=()=>standalone()?"":installEv&&/Android/.test(navigator.userAgent)
 $("setBtn").onclick=()=>{closeNav();
   formDlg(L("設定"),`${H(L("カラーテーマ"))}${seg("fTone",[["auto",L("自動")],["light",L("ライト")],["dark",L("ダーク")]],pref("tone")||"auto")}<div class="tiles" id="fThemes">${themeTiles()}</div><button type="button" class="btn" id="fThemeFile">${L("テーマを読み込む（.json）")}</button>
   ${H(L("ビューアの背景"))}<div class="tiles" id="fVbgs">${VBGS.map(([v,l,sw])=>tile("vbg",v,l,sw)).join("")}</div>
+  ${H(L("ビューアのホイール"))}${seg("fWheel",[["nav",L("前 / 次")],["zoom",L("拡大 / 縮小")]],pref("wheel")||"nav")}
   ${H(L("ファイル名"))}${seg("fNames",[["on",L("表示")],["off",L("非表示")]],pref("names")||"on")}
   ${H(L("言語"))}${seg("fLang",[["auto",L("自動")],["ja","日本語"],["en","English"]],langPref())}
   ${dbx.isConfigured()?`${H("Dropbox")}<button type="button" class="btn" id="fDbx">${dbxMode?L("切断"):L("接続")}</button>`:""}${homeSec()}<button type="button" class="btn" id="fKeys">${L("キーボードショートカット")}</button>`,L("閉じる"),()=>{},
   ()=>{$("dlgForm").classList.add("set");syncSettings();$("dCancel").hidden=true;
     $("fThemes").onclick=e=>{const b=e.target.closest(".tile");if(b)setTheme(b.dataset.theme)};
     $("fVbgs").onclick=e=>{const b=e.target.closest(".tile");if(b)setVBg(b.dataset.vbg)};
+    $("fWheel").onclick=e=>{const b=e.target.closest("button");if(!b)return;pref("wheel",b.dataset.v);b.parentNode.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b))};
     $("fNames").onclick=e=>{const b=e.target.closest("button");if(b)setNames(b.dataset.v)};
     $("fLang").onclick=e=>{const b=e.target.closest("button");if(!b)return;setLangPref(b.dataset.v);b.parentNode.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b));Promise.resolve(flushSave()).finally(()=>location.reload())};
     $("fTone").onclick=e=>{const b=e.target.closest("button");if(b){pref("tone",b.dataset.v);setTheme(pref("theme"))}};
@@ -838,7 +840,15 @@ $("vFav").onclick=()=>{const it=list[V.i];it.favorite=!it.favorite;save();$("vFa
 $("vPlay").onclick=()=>{V.play=!V.play;$("vPlay").textContent=V.play?"❚❚":"▶";if(V.video)V.play?V.video.play():V.video.pause()};
 const stage=$("stage");const pts=new Map();let pinch=null;
 const rel=e=>{const r=stage.getBoundingClientRect();return[e.clientX-r.left-r.width/2,e.clientY-r.top-r.height/2]};
-stage.addEventListener("wheel",e=>{if(selfInput(e.target))return;e.preventDefault();const [x,y]=rel(e);zoomAt(Math.exp(-e.deltaY*(e.ctrlKey?.01:.0015)),x,y)},{passive:false});
+// Wheel: previous/next by default, or zoom (setting "wheel"). Ctrl/⌘ + wheel and trackpad pinch always zoom.
+// A mouse notch pages once; a trackpad swipe pages once per gesture (it waits for the scrolling to pause).
+let wAcc=0,wNext=0,wGest=false,wQuiet=0;
+stage.addEventListener("wheel",e=>{if(selfInput(e.target))return;e.preventDefault();const [x,y]=rel(e),mod=e.ctrlKey||e.metaKey;
+  if(mod||pref("wheel")==="zoom")return zoomAt(Math.exp(-e.deltaY*(mod?.01:.0015)),x,y);
+  const d=Math.abs(e.deltaX)>Math.abs(e.deltaY)?e.deltaX:e.deltaY,px=e.deltaMode?d*40:d,n=performance.now();
+  if(e.deltaMode||Math.abs(px)>=100){if(n>=wNext){wNext=n+120;go(Math.sign(px))}return}
+  clearTimeout(wQuiet);wQuiet=setTimeout(()=>{wGest=false;wAcc=0},150);
+  if(wGest)return;wAcc+=px;if(Math.abs(wAcc)>=40){wGest=true;go(Math.sign(wAcc));wAcc=0}},{passive:false});
 let gs=1;stage.addEventListener("gesturestart",e=>{e.preventDefault();gs=1});
 stage.addEventListener("gesturechange",e=>{e.preventDefault();if(pts.size>1)return;const [x,y]=rel(e);zoomAt(e.scale/gs,x,y);gs=e.scale});
 // Swipe (touch/pen at fit size): the item follows the finger sideways; release past 15% of the width or with a flick to page, otherwise it springs back.
