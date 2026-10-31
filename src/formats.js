@@ -105,9 +105,41 @@ async function zipPreview(u){
   }
   return null;
 }
+// CLIP STUDIO (.clip): an SQLite database inside "CHNKSQLi"; its CanvasPreview table holds a PNG of the canvas.
+// The PNG is split across SQLite overflow pages, so the database is read properly rather than searched.
+function clipPreview(u){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength),tag=s=>String.fromCharCode(...u.subarray(s,s+8));
+  if(tag(0)!=="CSFCHUNK")return null;
+  let p=Number(dv.getBigUint64(16))||24,db=null;
+  while(p+16<=u.length){const n=tag(p),len=Number(dv.getBigUint64(p+8));if(n==="CHNKSQLi"){db=u.subarray(p+16,p+16+len);break}p+=16+len}
+  return db&&sqliteBlob(db,"CanvasPreview","ImageData");
+}
+function sqliteBlob(d,table,column){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  let ps=dv.getUint16(16);if(ps===1)ps=65536;const U=ps-d[20],page=n=>(n-1)*ps;
+  const varint=p=>{let v=0;for(let i=0;i<9;i++){const b=d[p+i];if(i===8){v=v*256+b;return [v,p+9]}v=v*128+(b&127);if(b<128)return [v,p+i+1]}};
+  // Payload of a table leaf cell, joined with its overflow pages.
+  const payload=c=>{let [P,q]=varint(c);[,q]=varint(q);const X=U-35;if(P<=X)return d.subarray(q,q+P);
+    const M=Math.floor((U-12)*32/255)-23,K=M+(P-M)%(U-4),L=K<=X?K:M,out=new Uint8Array(P);out.set(d.subarray(q,q+L));
+    let o=L,nx=dv.getUint32(q+L);while(nx&&o<P){const b=page(nx),n=Math.min(U-4,P-o);out.set(d.subarray(b+4,b+4+n),o);o+=n;nx=dv.getUint32(b)}return out};
+  const rows=root=>{const out=[],walk=n=>{const b=page(n),h=b+(n===1?100:0),t=d[h],cnt=dv.getUint16(h+3),hl=t===13?8:12;
+      for(let i=0;i<cnt;i++){const c=b+dv.getUint16(h+hl+i*2);if(t===13)out.push(payload(c));else if(t===5)walk(dv.getUint32(c))}
+      if(t===5)walk(dv.getUint32(h+8))};walk(root);return out};
+  // Columns of a record: blobs as bytes, text as strings, integers unsigned (only rootpage is read).
+  const record=r=>{const vi=p=>{let v=0;for(let i=0;i<9;i++){const b=r[p+i];v=v*128+(b&127);if(b<128)return [v,p+i+1]}return [v,p+9]};
+    let [hs,p]=vi(0),q=hs;const out=[];
+    while(p<hs){let t;[t,p]=vi(p);const n=t>=12?(t-12)>>1:[0,1,2,3,4,6,8,8,0,0][t]||0;let v=null;
+      if(t>=12)v=t%2?new TextDecoder().decode(r.subarray(q,q+n)):r.subarray(q,q+n);else if(t>=1&&t<=6){v=0;for(let i=0;i<n;i++)v=v*256+r[q+i]}else if(t===9)v=1;else if(t===8)v=0;
+      out.push(v);q+=n}
+    return out};
+  const m=rows(1).map(record).find(r=>r[0]==="table"&&r[1]===table);if(!m)return null;
+  const cols=m[4].slice(m[4].indexOf("(")+1).split(",").map(c=>c.trim().split(/\s+/)[0].replace(/["`\[\]]/g,"")),k=cols.indexOf(column);if(k<0)return null;
+  const blobs=rows(m[3]).map(r=>record(r)[k]).filter(b=>b instanceof Uint8Array&&b.length).sort((a,b)=>b.length-a.length);
+  return blobs[0]?new Blob([blobs[0]],{type:"image/png"}):null;
+}
 async function pack(blob){
   const u=new Uint8Array(await blob.arrayBuffer());
-  const b=await zipPreview(u).catch(()=>null)||embedded(u);return b&&bitmap(b);
+  const b=clipPreview(u)||await zipPreview(u).catch(()=>null)||embedded(u);return b&&bitmap(b);
 }
 
 /* ---------- fonts, audio, 3D, spreadsheets ---------- */

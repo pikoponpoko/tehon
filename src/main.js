@@ -128,8 +128,11 @@ function pumpOgp(){while(ogpQ.length&&ogpBusy<4){ogpBusy++;ogpQ.shift()().finall
 async function loadOgp(it){
   const name=urlHash(it.url)+".jpg",saved=dbxMode&&ogpFiles.get(name);
   if(saved){const b=(await dbx.thumbnails([{id:saved}])).get(saved);return b?URL.createObjectURL(b):null}
-  const r=await fetch("/api/ogp?url="+encodeURIComponent(it.url));
-  if(!r.ok||!(r.headers.get("Content-Type")||"").startsWith("image/"))return null;
+  // YouTube pages don't give their preview to the Worker; the video's own thumbnail is used (largest first).
+  const yt=embedOf(it.url)?.src.match(/youtube-nocookie\.com\/embed\/([\w-]{11})/)?.[1];
+  const tries=yt?["maxresdefault","hqdefault"].map(k=>`https://i.ytimg.com/vi/${yt}/${k}.jpg`):[it.url];
+  let r=null;for(const u of tries){r=await fetch("/api/ogp?url="+encodeURIComponent(u));if(r.ok&&(r.headers.get("Content-Type")||"").startsWith("image/"))break;r=null}
+  if(!r)return null;
   const bm=await createImageBitmap(await r.blob()),k=Math.min(1,640/bm.width);
   const cv=document.createElement("canvas");cv.width=Math.round(bm.width*k);cv.height=Math.round(bm.height*k);cv.getContext("2d").drawImage(bm,0,0,cv.width,cv.height);bm.close();
   const blob=await new Promise(ok=>cv.toBlob(ok,"image/jpeg",.85));if(!blob)return null;
