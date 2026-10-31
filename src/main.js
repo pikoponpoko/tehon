@@ -186,7 +186,7 @@ async function loadDropbox(keep=false){
     for(const u of em?.urls||[]){const k="eagle-"+u.addedAt+"-"+u.url;if(!meta.urls[k])meta.urls[k]={...u,updatedAt:0}}
     for(const [k,u] of Object.entries(meta.urls))if(!u.deleted)out.push({id:"url:"+k,key:k,name:u.name,folder:u.folder,kind:"url",url:u.url,tags:u.tags||[],favorite:!!u.favorite,trashed:!!u.trashed,addedAt:u.addedAt,w:0,h:0,dbx:true});
     const oldRev=new Map(items.map(i=>[i.id,i.rev]));
-    for(const it of out)if(oldRev.has(it.id)&&oldRev.get(it.id)!==it.rev){thumbCache.delete(it.id);thumbAsked.delete(it.id);previewP.delete(it.id)}
+    for(const it of out)if(oldRev.has(it.id)&&oldRev.get(it.id)!==it.rev){thumbCache.delete(it.id);thumbAsked.delete(it.id);previewP.delete(it.id);textMem.delete(it.id)}
     dbxMode=true;eagleMode=false;dbxPending=false;items=out;
     FOLDERS=entries.filter(e=>e[".tag"]==="folder").map(e=>e.path_display.slice(1)).sort((a,b)=>a.localeCompare(b,"ja"));
     TAGS.length=0;TAGS.push(...new Set(out.flatMap(i=>i.tags)));
@@ -276,7 +276,7 @@ function appendCards(start){
   const frag=document.createDocumentFragment();
   list.slice(start,start+CHUNK).forEach((it,j)=>{const idx=start+j;
     const c=document.createElement("div");c.className="card"+(it.kind==="text"||it.kind==="url"?"":" media")+(st.sel.has(it.id)?" sel":"");c.tabIndex=0;c.dataset.i=idx;
-    if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";const put=t=>{d.textContent=t.slice(0,400);d.style.fontSize=txtSize(t)+"px"};if(it.text!=null)put(it.text);else d.textContent="…";c.append(d);if(it.text==null&&!(it.dbx&&it.size>2e5)){if(it.dbx){d._tx=it;d._put=put;lazy(d)}else readText(it).then(put)}}
+    if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";const put=t=>{d.textContent=t.slice(0,400);d.style.fontSize=txtSize(t)+"px"};const pv=it.text??textMem.get(it.id);if(pv!=null)put(pv);else d.textContent="…";c.append(d);if(pv==null&&!(it.dbx&&it.size>2e5)){if(it.dbx){d._tx=it;d._put=put;lazy(d)}else readText(it).then(put)}}
     else if(it.kind==="url")urlCard(c,it);
     else if(it.kind==="video"&&(it.file||it.dbx)){const v=document.createElement("video");v.className="th";v.muted=true;v.loop=true;v.playsInline=true;v.preload="none";
       if(it.thumbFile)v.poster=it.blobUrl;v._it=it;c.append(v);liveObs().observe(v)}
@@ -485,12 +485,12 @@ $("setBtn").onclick=()=>{closeNav();
 const TEXT=["txt","md","text","csv","json"];
 // Card text for Dropbox files: the first 400 characters, kept in IndexedDB until the file changes.
 // Downloads run 10 at a time, in the order the cards were asked for (see lazy), so the ones on screen come first.
-const previewP=new Map(),textQ=[];let textBusy=0;
+const previewP=new Map(),textMem=new Map(),textQ=[];let textBusy=0;
 function textSlot(fn){return new Promise(res=>{textQ.push(()=>fn().then(res));pumpText()})}
 function pumpText(){while(textQ.length&&textBusy<10){textBusy++;textQ.shift()().finally(()=>{textBusy--;pumpText()})}}
 function textPreview(it){
   if(!previewP.has(it.id))previewP.set(it.id,dbx.cacheGet([{key:"text:"+it.id,rev:it.rev}]).catch(()=>new Map()).then(m=>m.get("text:"+it.id)??
-    textSlot(()=>it.text!=null?Promise.resolve(it.text):readText(it)).then(t=>{const v=t.slice(0,400);if(t)dbx.cacheSet([{key:"text:"+it.id,rev:it.rev,value:v}]).catch(()=>{});return v})));
+    textSlot(()=>it.text!=null?Promise.resolve(it.text):readText(it)).then(t=>{const v=t.slice(0,400);if(t)textMem.set(it.id,v);if(t)dbx.cacheSet([{key:"text:"+it.id,rev:it.rev,value:v}]).catch(()=>{});return v})));
   return previewP.get(it.id);
 }
 async function readText(it){
@@ -709,8 +709,22 @@ document.querySelectorAll(".sb").forEach(el=>{let t;el.addEventListener("scroll"
 const authErr=await dbx.handleRedirect();
 const conn=!DEMO&&await dbx.isConnected();
 const cached=conn&&loadCache();dbxPending=conn&&!cached;
-if(cached)$("sync").lastChild.textContent="Dropbox";
-render();
+let painted=false;
+if(cached){$("sync").lastChild.textContent="Dropbox";await preloadSaved()}
+render();painted=true;
 if(authErr)toast(authErr);
 if(conn)loadDropbox(cached);
+// Thumbnails and card text already on this device, read in one go before the first render so the list opens filled in.
+// Waits at most 500 ms; anything not read by then loads as usual, and the list itself never waits on it.
+function preloadSaved(){
+  const its=items.filter(i=>i.dbx&&(i.thumbable||i.kind==="text"));
+  const keys=its.map(i=>i.kind==="text"?{key:"text:"+i.id,rev:i.rev}:{key:i.id,rev:i.rev});
+  const read=dbx.cacheGet(keys).then(m=>{for(const it of its){
+    if(it.kind==="text"){const v=m.get("text:"+it.id);if(typeof v==="string"){textMem.set(it.id,v);previewP.set(it.id,Promise.resolve(v))}continue}
+    const buf=m.get(it.id);if(!(buf instanceof ArrayBuffer&&buf.byteLength)||thumbCache.has(it.id))continue;
+    // Read after the list was drawn (slow device): put it into the cards like a fetched one.
+    if(painted)setThumb(it.id,new Blob([buf],{type:"image/jpeg"}));else{thumbAsked.add(it.id);thumbCache.set(it.id,URL.createObjectURL(new Blob([buf],{type:"image/jpeg"})))}
+  }}).catch(()=>{});
+  return Promise.race([read,new Promise(r=>setTimeout(r,500))]);
+}
 })();
