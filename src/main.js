@@ -186,7 +186,7 @@ async function loadDropbox(keep=false){
     for(const u of em?.urls||[]){const k="eagle-"+u.addedAt+"-"+u.url;if(!meta.urls[k])meta.urls[k]={...u,updatedAt:0}}
     for(const [k,u] of Object.entries(meta.urls))if(!u.deleted)out.push({id:"url:"+k,key:k,name:u.name,folder:u.folder,kind:"url",url:u.url,tags:u.tags||[],favorite:!!u.favorite,trashed:!!u.trashed,addedAt:u.addedAt,w:0,h:0,dbx:true});
     const oldRev=new Map(items.map(i=>[i.id,i.rev]));
-    for(const it of out)if(oldRev.has(it.id)&&oldRev.get(it.id)!==it.rev){thumbCache.delete(it.id);thumbAsked.delete(it.id);previewP.delete(it.id);textMem.delete(it.id)}
+    for(const it of out)if(oldRev.has(it.id)&&oldRev.get(it.id)!==it.rev){thumbCache.delete(it.id);thumbAsked.delete(it.id);previewP.delete(it.id);textMem.delete(it.id);posterMem.delete(it.id);posterP.delete(it.id)}
     dbxMode=true;eagleMode=false;dbxPending=false;items=out;
     FOLDERS=entries.filter(e=>e[".tag"]==="folder").map(e=>e.path_display.slice(1)).sort((a,b)=>a.localeCompare(b,"ja"));
     TAGS.length=0;TAGS.push(...new Set(out.flatMap(i=>i.tags)));
@@ -279,7 +279,8 @@ function appendCards(start){
     if(it.kind==="text"){const d=document.createElement("div");d.className="txtth";const put=t=>{d.textContent=t.slice(0,400);d.style.fontSize=txtSize(t)+"px"};const pv=it.text??textMem.get(it.id);if(pv!=null)put(pv);else d.textContent="…";c.append(d);if(pv==null&&!(it.dbx&&it.size>2e5)){if(it.dbx){d._tx=it;d._put=put;lazy(d)}else readText(it).then(put)}}
     else if(it.kind==="url")urlCard(c,it);
     else if(it.kind==="video"&&(it.file||it.dbx)){const v=document.createElement("video");v.className="th";v.muted=true;v.loop=true;v.playsInline=true;v.preload="none";
-      if(it.thumbFile)v.poster=it.blobUrl;v._it=it;c.append(v);liveObs().observe(v)}
+      if(it.w&&it.h)v.style.setProperty("--ar",it.w+"/"+it.h);
+      if(it.thumbFile)v.poster=it.blobUrl;else if(it.dbx)posterOf(it).then(u=>{if(u&&!v.poster)v.poster=u});v._it=it;c.append(v);liveObs().observe(v)}
     else{const im=document.createElement("img");im.className="th";if(it.w&&it.h)im.style.setProperty("--ar",it.w+"/"+it.h);im.loading="lazy";im.decoding="async";im.alt="";if(it.dbx)im.dataset.id=it.id;im.src=it.kind==="gif"&&it.file?(it.srcUrl||=URL.createObjectURL(it.file)):thumb(it);
       if(it.dbx&&it.thumbable&&!thumbCache.has(it.id)){im._th=it;lazy(im)}
       // An image that fails to load collapses to nothing, which hides the card: show the blank and fetch it again from Dropbox.
@@ -301,7 +302,7 @@ function liveObs(){return liveIO||=new IntersectionObserver(es=>{for(const e of 
   if(!e.isIntersecting){if(el.tagName==="VIDEO")el.pause();continue}
   if(el.tagName==="IMG"){liveIO.unobserve(el);dbxLink(it).then(u=>{const a=new Image();a.onload=()=>{el.removeAttribute("data-id");el.src=u};a.src=u}).catch(()=>{});continue}
   if(el.src){el.play().catch(()=>{});continue}
-  (it.file?Promise.resolve(it.srcUrl||=URL.createObjectURL(it.file)):dbxLink(it)).then(u=>{if(!el.isConnected)return;el.src=u;el.play().catch(()=>{})}).catch(()=>{})}
+  (it.file?Promise.resolve(it.srcUrl||=URL.createObjectURL(it.file)):dbxLink(it)).then(u=>{if(it.dbx)posterOf(it).then(p=>{if(!p)capturePoster(it,u)});if(!el.isConnected)return;el.src=u;el.play().catch(()=>{})}).catch(()=>{})}
 },{root:$("wrap"),rootMargin:"200px"})}
 function dbxLink(it){return it.link&&Date.now()<it.linkExp?Promise.resolve(it.link):dbx.tempLink(it.id).then(l=>{it.link=l;it.linkExp=Date.now()+3.5*3600e3;return l})}
 function renderSel(){
@@ -483,6 +484,27 @@ $("setBtn").onclick=()=>{closeNav();
     $("fThemeFile").onclick=()=>{const i=document.createElement("input");i.type="file";i.accept=".json,application/json";i.onchange=()=>i.files[0]&&importTheme(i.files[0]);i.click()};
     $("fKeys").onclick=keysDlg;const b=$("fDbx");if(b)b.onclick=async()=>{if(!dbxMode)return dbx.startAuth();flushSave();await dbx.disconnect();try{localStorage.removeItem(CACHE)}catch(e){}location.reload()}})};
 const TEXT=["txt","md","text","csv","json"];
+// Video cards: a still of the video, made on this device the first time it plays in the list and kept in IndexedDB
+// ("poster:" + id), so the card shows a picture at once while the video itself loads.
+const posterMem=new Map(),posterP=new Map();let posterBusy=false;const posterQ=[];
+function posterOf(it){
+  if(posterMem.has(it.id))return Promise.resolve(posterMem.get(it.id));
+  if(!posterP.has(it.id))posterP.set(it.id,dbx.cacheGet([{key:"poster:"+it.id,rev:it.rev}]).then(m=>{const b=m.get("poster:"+it.id);
+    if(!(b instanceof ArrayBuffer&&b.byteLength))return null;const u=URL.createObjectURL(new Blob([b],{type:"image/jpeg"}));posterMem.set(it.id,u);return u}).catch(()=>null));
+  return posterP.get(it.id);
+}
+// A separate element with CORS so the frame can be read; if that is refused the card simply keeps having no still.
+function capturePoster(it,url){if(posterQ.some(q=>q[0]===it)||posterMem.has(it.id))return;posterQ.push([it,url]);pumpPoster()}
+function pumpPoster(){if(posterBusy||!posterQ.length)return;posterBusy=true;const [it,url]=posterQ.shift();
+  const v=document.createElement("video");v.crossOrigin="anonymous";v.muted=true;v.playsInline=true;v.preload="auto";
+  const end=()=>{clearTimeout(t);v.removeAttribute("src");v.load();posterBusy=false;pumpPoster()},t=setTimeout(end,15000);
+  v.onloadeddata=()=>{v.currentTime=Math.min(.5,(v.duration||1)/10)};
+  v.onseeked=()=>{try{const k=Math.min(1,480/v.videoWidth),cv=document.createElement("canvas");cv.width=Math.round(v.videoWidth*k);cv.height=Math.round(v.videoHeight*k);
+      cv.getContext("2d").drawImage(v,0,0,cv.width,cv.height);
+      cv.toBlob(b=>{if(b)b.arrayBuffer().then(buf=>{posterMem.set(it.id,URL.createObjectURL(b));dbx.cacheSet([{key:"poster:"+it.id,rev:it.rev,value:buf}]).catch(()=>{})});end()},"image/jpeg",.8)}
+    catch(e){end()}};
+  v.onerror=end;v.src=url;
+}
 // Card text for Dropbox files: the first 400 characters, kept in IndexedDB until the file changes.
 // Downloads run 10 at a time, in the order the cards were asked for (see lazy), so the ones on screen come first.
 const previewP=new Map(),textMem=new Map(),textQ=[];let textBusy=0;
@@ -717,10 +739,11 @@ if(conn)loadDropbox(cached);
 // Thumbnails and card text already on this device, read in one go before the first render so the list opens filled in.
 // Waits at most 500 ms; anything not read by then loads as usual, and the list itself never waits on it.
 function preloadSaved(){
-  const its=items.filter(i=>i.dbx&&(i.thumbable||i.kind==="text"));
-  const keys=its.map(i=>i.kind==="text"?{key:"text:"+i.id,rev:i.rev}:{key:i.id,rev:i.rev});
+  const its=items.filter(i=>i.dbx&&(i.thumbable||i.kind==="text"||i.kind==="video"));
+  const keys=its.map(i=>i.kind==="text"?{key:"text:"+i.id,rev:i.rev}:i.kind==="video"?{key:"poster:"+i.id,rev:i.rev}:{key:i.id,rev:i.rev});
   const read=dbx.cacheGet(keys).then(m=>{for(const it of its){
     if(it.kind==="text"){const v=m.get("text:"+it.id);if(typeof v==="string"){textMem.set(it.id,v);previewP.set(it.id,Promise.resolve(v))}continue}
+    if(it.kind==="video"){const b=m.get("poster:"+it.id);if(b instanceof ArrayBuffer&&b.byteLength&&!posterMem.has(it.id))posterMem.set(it.id,URL.createObjectURL(new Blob([b],{type:"image/jpeg"})));continue}
     const buf=m.get(it.id);if(!(buf instanceof ArrayBuffer&&buf.byteLength)||thumbCache.has(it.id))continue;
     // Read after the list was drawn (slow device): put it into the cards like a fetched one.
     if(painted)setThumb(it.id,new Blob([buf],{type:"image/jpeg"}));else{thumbAsked.add(it.id);thumbCache.set(it.id,URL.createObjectURL(new Blob([buf],{type:"image/jpeg"})))}

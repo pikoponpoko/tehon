@@ -235,7 +235,7 @@ export async function listAll(onPage?: (n: number) => void): Promise<FileMeta[]>
 export const THUMB_EXT = ["jpg", "jpeg", "png", "tiff", "tif", "gif", "webp", "ppm", "bmp"];
 
 /* ---------- local cache of thumbnails and text previews (IndexedDB "tehon-cache2") ----------
-   Entries are { rev, value } keyed by file id (text previews: "text:" + id) and used only while rev still matches.
+   Entries are { rev, value } keyed by file id (text previews: "text:" + id, video stills: "poster:" + id) and used only while rev still matches.
    Thumbnails are stored as ArrayBuffer, not Blob: Safari can lose Blobs kept in IndexedDB. */
 const CACHE_STORE = "c";
 let cacheDb: Promise<IDBDatabase> | null = null;
@@ -270,7 +270,7 @@ export async function cachePrune(keep: Set<string>) {
   const s = await cacheStore("readwrite");
   const r = s.getAllKeys();
   r.onsuccess = () => {
-    for (const k of r.result as string[]) if (!keep.has(k.startsWith("text:") ? k.slice(5) : k)) s.delete(k);
+    for (const k of r.result as string[]) if (!keep.has(k.replace(/^(text|poster):/, ""))) s.delete(k);
   };
   await done(s.transaction);
 }
