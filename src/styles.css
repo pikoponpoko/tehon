@@ -111,7 +111,8 @@ select.btn{padding-right:8px}
 .vbtn:hover{background:color-mix(in srgb,var(--vfg) 10%,transparent)}
 .vbtn.on{color:var(--fav);border-color:var(--fav)}
 .stage{overflow:hidden;position:relative;touch-action:none;cursor:grab}
-.stage canvas,.stage img,.stage video{max-width:none;max-height:none;position:absolute;left:50%;top:50%;transform-origin:0 0;image-rendering:auto}
+.stage canvas,.stage img,.stage video,.stage iframe{max-width:none;max-height:none;position:absolute;left:50%;top:50%;transform-origin:0 0;image-rendering:auto}
+.stage iframe{border:0}
 .vfoot{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding-top:10px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));font-size:12px}
 .tag{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--vline);border-radius:999px;padding:2px 9px}
 .tag button{all:unset;cursor:pointer;opacity:.6}
