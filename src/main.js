@@ -256,7 +256,19 @@ function renderGrid(){
       if(!dbxMode&&!dbxPending&&dbx.isConfigured()){const b=document.createElement("button");b.className="btn";b.textContent="Dropboxに接続";b.onclick=()=>dbx.startAuth();const e=document.createElement("div");e.className="empty";e.append(b);g.append(e)}
       return}
     const e=document.createElement("div");e.className="empty";e.textContent=st.view==="trash"?"ゴミ箱は空です":"該当する資料はありません";g.append(e);return}
+  if(st.layout==="fall")g.append(...Array.from({length:curCols()},()=>Object.assign(document.createElement("div"),{className:"mcol",_h:0})));
   appendCards(0);
+}
+// Waterfall: each card goes, in list order, to the column that is shortest so far, judged by the card's expected
+// height. Unlike CSS columns, a card never moves to another column when thumbnails and text load.
+const cardH=it=>it.kind==="text"||it.kind==="url"?.9:(it.w&&it.h?Math.min(3,it.h/it.w):1)+.2;
+function placeCard(g,c,it){const cols=g.querySelectorAll(":scope>.mcol");if(!cols.length)return false;
+  let m=cols[0];for(const k of cols)if(k._h<m._h)m=k;m.append(c);m._h+=cardH(it);return true}
+function relayoutFall(){const g=$("grid");if(st.layout!=="fall"||!g.querySelector(".card"))return;
+  const cards=[...g.querySelectorAll(".card")].sort((a,b)=>a.dataset.i-b.dataset.i),n=curCols(),cols=g.querySelectorAll(":scope>.mcol");
+  if(cols.length===n)return;
+  cols.forEach(k=>k.remove());g.prepend(...Array.from({length:n},()=>Object.assign(document.createElement("div"),{className:"mcol",_h:0})));
+  for(const c of cards)placeCard(g,c,list[+c.dataset.i]);
 }
 const CHUNK=300;let gridIO;
 function appendCards(start){
@@ -268,7 +280,7 @@ function appendCards(start){
     else if(it.kind==="url")urlCard(c,it);
     else if(it.kind==="video"&&(it.file||it.dbx)){const v=document.createElement("video");v.className="th";v.muted=true;v.loop=true;v.playsInline=true;v.preload="none";
       if(it.thumbFile)v.poster=it.blobUrl;v._it=it;c.append(v);liveObs().observe(v)}
-    else{const im=document.createElement("img");im.className="th";im.loading="lazy";im.decoding="async";im.alt="";if(it.dbx)im.dataset.id=it.id;im.src=it.kind==="gif"&&it.file?(it.srcUrl||=URL.createObjectURL(it.file)):thumb(it);
+    else{const im=document.createElement("img");im.className="th";if(it.w&&it.h)im.style.setProperty("--ar",it.w+"/"+it.h);im.loading="lazy";im.decoding="async";im.alt="";if(it.dbx)im.dataset.id=it.id;im.src=it.kind==="gif"&&it.file?(it.srcUrl||=URL.createObjectURL(it.file)):thumb(it);
       if(it.dbx&&it.thumbable&&!thumbCache.has(it.id)){im._th=it;lazy(im)}
       // An image that fails to load collapses to nothing, which hides the card: show the blank and fetch it again from Dropbox.
       if(it.dbx)im.onerror=()=>{if(!im.src.startsWith("blob:"))return;im.src=BLANK;if(!it.thumbable)return;thumbCache.delete(it.id);thumbAsked.delete(it.id);queueThumb(it,true)}
@@ -277,7 +289,7 @@ function appendCards(start){
     const ck=document.createElement("span");ck.className="chk";ck.textContent="✓";c.append(ck);
     const m=document.createElement("div");m.className="meta";m.innerHTML=`<span class="nm"></span><button class="fv${it.favorite?" on":""}" aria-label="お気に入り">${HEART}</button>`;
     m.firstChild.textContent=it.name;c.append(m);
-    frag.append(c);
+    if(!placeCard(g,c,it))frag.append(c);
   });
   g.append(frag);
   if(start+CHUNK<list.length){const s=document.createElement("div");s.className="more";s.style.gridColumn="1/-1";s.style.height="1px";g.append(s);
@@ -367,15 +379,15 @@ document.addEventListener("keydown",e=>{
 $("q").oninput=e=>{st.q=e.target.value;renderGrid()};
 $("sort").onchange=e=>{st.sort=e.target.value;if(st.sort==="random")st.rseed=Date.now()|0;$("shuffle").hidden=st.sort!=="random";renderGrid();$("wrap").scrollTop=0};
 $("shuffle").onclick=()=>{st.rseed=(Date.now()^Math.random()*1e9)|0;renderGrid();$("wrap").scrollTop=0};
-function setLayout(l){st.layout=l;$("grid").classList.toggle("fall",l==="fall");$("lGrid").classList.toggle("on",l==="grid");$("lFall").classList.toggle("on",l==="fall");try{localStorage.setItem("tehon-layout",l)}catch(e){}}
+function setLayout(l){const ch=st.layout!==l;st.layout=l;$("grid").classList.toggle("fall",l==="fall");if(ch&&list.length)renderGrid();$("lGrid").classList.toggle("on",l==="grid");$("lFall").classList.toggle("on",l==="fall");try{localStorage.setItem("tehon-layout",l)}catch(e){}}
 $("lGrid").onclick=()=>setLayout("grid");$("lFall").onclick=()=>setLayout("fall");
 {let l=null;try{l=localStorage.getItem("tehon-layout")}catch(e){}setLayout(l||"fall")}
 // Column count; null follows the window width.
 const curCols=()=>{const g=$("grid");if(g.style.getPropertyValue("--cols"))return +g.style.getPropertyValue("--cols");const cs=getComputedStyle(g),cell=parseFloat(cs.getPropertyValue("--cell"))||170,gap=parseFloat(cs.columnGap)||10;return Math.max(1,Math.floor((g.clientWidth+gap)/(cell+gap)))};
-function setCols(n){const g=$("grid");n=n&&Math.max(1,Math.min(12,n));if(n)g.style.setProperty("--cols",n);else g.style.removeProperty("--cols");g.classList.toggle("cols",!!n);$("size").value=n||curCols();try{localStorage.setItem("tehon-cols",n||"")}catch(e){}}
+function setCols(n){const g=$("grid");n=n&&Math.max(1,Math.min(12,n));if(n)g.style.setProperty("--cols",n);else g.style.removeProperty("--cols");g.classList.toggle("cols",!!n);relayoutFall();$("size").value=n||curCols();try{localStorage.setItem("tehon-cols",n||"")}catch(e){}}
 $("size").oninput=e=>setCols(+e.target.value);
 try{const n=+localStorage.getItem("tehon-cols");setCols(n||null)}catch(e){setCols(null)}
-addEventListener("resize",()=>{if(!$("grid").classList.contains("cols"))$("size").value=curCols()});
+addEventListener("resize",()=>{if(!$("grid").classList.contains("cols"))$("size").value=curCols();relayoutFall()});
 // Pinch on the list changes the column count: spreading fingers means fewer, larger thumbnails.
 {let acc=0,base=0;const wrap=$("wrap");
   const pinchCols=f=>setCols(Math.round(base/f));
@@ -577,7 +589,7 @@ function openViewer(i){V.i=i;$("viewer").hidden=false;loadV()}
 const vi=$("vi");let vv=$("vv");
 const vt=$("vt");let vtTimer;
 function useEl(el,w,h){[vc,vi,vv,vt].forEach(x=>x.hidden=x!==el);["vIn","vOut","vFit"].forEach(b=>$(b).hidden=el===vt);if(el===vt){V.el=null;V.enter=null;return}V.el=el;V.w=w;V.h=h;fitV()}
-function closeViewer(){settle(true);V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");renderGrid();$("grid").children[V.i]?.focus()}
+function closeViewer(){settle(true);V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");renderGrid();cardAt(V.i)?.focus()}
 function loadV(){
   settle(true);cancelAnimationFrame(V.raf);vv.pause();V.video=null;delete vi.dataset.ph;
   const it=list[V.i];$("vTitle").textContent=it.name;$("vFav").classList.toggle("on",it.favorite);

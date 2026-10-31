@@ -71,10 +71,10 @@ select.btn{padding-right:8px}
 .grid-wrap{flex:1;min-height:0;overflow-y:auto;padding-block:14px;padding-left:16px;padding-right:max(16px,env(safe-area-inset-right,0px))}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--cell,170px),1fr));gap:10px}
 .grid.cols{grid-template-columns:repeat(var(--cols),minmax(0,1fr))}
-.grid.fall.cols{columns:var(--cols)}
-.grid.fall{display:block;columns:var(--cell,170px);column-gap:10px}
-.grid.fall .card{break-inside:avoid;margin-bottom:10px;display:block}
-.grid.fall .card .th{aspect-ratio:auto;height:auto}
+.grid.fall{display:flex;flex-wrap:wrap;align-items:flex-start;column-gap:10px}
+.grid.fall .mcol{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:10px}
+.grid.fall .more,.grid.fall .empty{flex-basis:100%}
+.grid.fall .card .th{aspect-ratio:var(--ar,auto);height:auto}
 .grid.fall .urlth,.grid.fall .txtth{aspect-ratio:auto;min-height:90px}
 .grid.fall .txtth{max-height:220px}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
@@ -162,7 +162,7 @@ select.btn{padding-right:8px}
   #shuffle{padding:6px 8px}
   #shuffle span{display:none}
   .grid{--cell:110px!important;gap:6px}
-  .grid.fall{column-gap:6px}.grid.fall .card{margin-bottom:6px}
+  .grid.fall{column-gap:6px}.grid.fall .mcol{gap:6px}
   .card .meta{padding:4px 6px}
 }
 @media (prefers-reduced-motion:reduce){aside{transition:none}}
