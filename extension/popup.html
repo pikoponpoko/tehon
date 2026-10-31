@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Tehon</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<main id="login" hidden>
+  <button id="connect" class="btn primary">Dropboxに接続</button>
+  <p id="loginErr" class="err" hidden></p>
+</main>
+<main id="app" hidden>
+  <header class="bar">
+    <input id="folder" list="folders" placeholder="フォルダ" autocomplete="off" spellcheck="false">
+    <datalist id="folders"></datalist>
+    <input id="tags" placeholder="タグ" autocomplete="off" spellcheck="false">
+  </header>
+  <div class="bar tools">
+    <button id="all" class="btn">すべて選択</button>
+    <span id="count" class="muted"></span>
+    <select id="min" title="最小サイズ">
+      <option value="0">すべてのサイズ</option>
+      <option value="150">150px以上</option>
+      <option value="300" selected>300px以上</option>
+      <option value="600">600px以上</option>
+    </select>
+  </div>
+  <section id="grid" class="grid"></section>
+  <p id="empty" class="muted center" hidden>画像が見つかりません</p>
+  <footer class="bar foot">
+    <div id="prog" class="prog" hidden><div id="progBar"></div></div>
+    <span id="status" class="muted"></span>
+    <button id="saveUrl" class="btn">URLを保存</button>
+    <button id="save" class="btn primary" disabled>保存</button>
+  </footer>
+  <button id="disconnect" class="link">接続を解除</button>
+</main>
+<script type="module" src="popup.js"></script>
+</body>
+</html>
