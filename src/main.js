@@ -4,6 +4,7 @@ import { EAGLE_IMPORT } from "./config";
 import * as eagle from "./eagle";
 import PTHEMES from "./themes.json";
 
+if(import.meta.env.PROD&&"serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
 // Web fonts are added from here so their stylesheet doesn't hold up the first render.
 document.head.append(Object.assign(document.createElement("link"),{rel:"stylesheet",href:"https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap"}));
 
