@@ -801,7 +801,8 @@ function go(d,far){const j=V.i+d;if(j<0||j>=list.length){if(V.x)glide(0,200);ret
   const next=()=>{V.i=j;V.enter={d,far};loadV()};
   if(far&&V.el){const w=stage.clientWidth;glide(-d*(w/2+V.w*V.z/2),Math.max(60,Math.min(130,(w-Math.abs(V.x))/2.5)),next)}else{settle();next()}}
 function applyV(){if(!V.el)return;V.el.style.width=V.w+"px";V.el.style.height=V.h+"px";V.el.style.transform=`translate(${V.x-V.w*V.z/2}px,${V.y-V.h*V.z/2}px) scale(${V.z})`;$("vZoom").textContent=Math.round(V.z*100)+"%"}
-function zoomAt(f,cx=0,cy=0){if(!V.el||V.el===vf)return;const nz=Math.max(.05,Math.min(16,V.z*f));const k=nz/V.z;V.x=cx-(cx-V.x)*k;V.y=cy-(cy-V.y)*k;V.z=nz;applyV()}
+// Zooming out stops at the fit size, centred.
+function zoomAt(f,cx=0,cy=0){if(!V.el||V.el===vf)return;const nz=Math.max(V.fit,Math.min(16,V.z*f));const k=nz/V.z;V.x=cx-(cx-V.x)*k;V.y=cy-(cy-V.y)*k;V.z=nz;if(nz===V.fit)V.x=V.y=0;applyV()}
 $("vIn").onclick=()=>zoomAt(1.25);$("vOut").onclick=()=>zoomAt(.8);
 $("vFit").onclick=()=>{if(Math.abs(V.z-V.fit)<.001){V.z=1;V.x=0;V.y=0;applyV()}else fitV()};
 $("vClose").onclick=closeViewer;
