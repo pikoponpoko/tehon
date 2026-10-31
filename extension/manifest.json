@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Tehon",
+  "version": "0.1.0",
+  "description": "ページ内の画像をTehon（Dropbox）にまとめて保存",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy7OKU0CANlqCVB/xi9T6NFV7ibbJI1O0nfRQbFHzQzOx7mXodn9IbvGWey+oNiYeyG/GQMav2GWDoqUissHAVL13tLLtwj4AEh8p9HCt5THHwQcfxb3l1NripyzSuFbiuDqVvr+9UK7wE8EpGHqM6jfGjHKCDJsJPV0hjNWfQAs5xqIh+SRbUOLeZ/j0S0Qt+KV7GskED97Vj/32dgviQB6/AOimsGLWgKGgLJwCIPK0o+ctd5OCsuDwlhkW6KeKlPi7bxA1dBxB/7WbRB3neGixRsWnya4G7Bky90o7LXzyQbyMKA9QHMPO3FMjw9lWIpyQceL4fhpst/Y2noLdQwIDAQAB",
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "action": { "default_popup": "popup.html", "default_icon": { "16": "icons/16.png", "32": "icons/32.png" } },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["activeTab", "scripting", "storage", "identity", "contextMenus"],
+  "host_permissions": ["<all_urls>"],
+  "commands": {
+    "_execute_action": { "suggested_key": { "default": "Alt+Shift+S" } }
+  }
+}

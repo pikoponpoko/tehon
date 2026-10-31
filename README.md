@@ -47,3 +47,22 @@ Eagle ライブラリ読み込み（テスト用）は `npm run dev` では常�
 手元からデプロイする場合は `npx wrangler login` のあと `npx wrangler deploy`。
 
 セキュリティヘッダー（CSP など）は `public/_headers` にあります。
+
+## ブラウザ拡張（Chrome・Edge）
+
+`extension/` は、開いているページの画像を選んで Tehon（Dropbox の App folder）にまとめて保存する拡張機能です。ビルドは不要です。
+
+- 拡張のアイコン、または `Alt+Shift+S` でページ内の画像一覧を開く。クリックで選択、Shift+クリックで範囲選択、`Ctrl+A` ですべて選択、`Enter` で保存
+- フォルダとタグを付けて保存。タグは拡張用の `/.tehon/devices/ext-<ID>.json` に書き、アプリ側で他の端末と同じように読み込まれる
+- 画像の右クリックメニュー「Tehonに保存」で1枚だけ保存（直前に使ったフォルダとタグ）
+- 「URLを保存」でページをブックマークとして追加
+- Pinterest と X の画像は原寸版を保存
+- 動画も一覧に出る。ファイルとして取れる動画はそのまま保存し、Instagram のように配信形式で再生される動画は、ページ上で最初から1回再生して録画（Chrome では MP4、使えない環境では WebM）。録画は動画の長さだけ時間がかかり、その間はタブを閉じない。60MB を超える録画は保存しない
+
+### 読み込み
+
+1. `chrome://extensions`（Edge は `edge://extensions`）でデベロッパーモードをオン
+2. 「パッケージ化されていない拡張機能を読み込む」で `extension/` フォルダを選ぶ
+3. Dropbox App Console の **Redirect URIs** に `https://aabpfpgbpdpopcfckkcdhcfciihlpkji.chromiumapp.org/` を追加
+
+拡張の ID は `manifest.json` の `key` で固定しているため、どの PC で読み込んでも上の Redirect URI のままで使えます。
