@@ -9,6 +9,28 @@ import { L, langPref, setLangPref, translateDom } from "./i18n.js";
 translateDom();
 
 if(import.meta.env.PROD&&"serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
+// The service worker serves index.html from its cache, so a new deploy would only show on the launch after next.
+// When the live index.html points at different assets, it is put in that cache and 「更新」 reloads into it.
+if(import.meta.env.PROD&&"caches" in window){
+  const mine=document.querySelector('script[src^="/assets/"]')?.getAttribute("src");
+  let found=false;
+  const check=async()=>{
+    if(found||!mine||document.hidden)return;
+    try{
+      const r=await fetch("/",{cache:"no-cache"});
+      if(!r.ok)return;
+      const next=((await r.clone().text()).match(/<script[^>]+src="(\/assets\/[^"]+)"/)||[])[1];
+      if(!next||next===mine)return;
+      await (await caches.open("tehon-app-v1")).put("/",r);
+      found=true;
+      const b=document.getElementById("updBtn");
+      b.hidden=false;b.onclick=()=>location.reload();
+    }catch(e){}
+  };
+  setTimeout(check,3000);
+  document.addEventListener("visibilitychange",check);
+  setInterval(check,30*60*1000);
+}
 // Web fonts are added from here so their stylesheet doesn't hold up the first render.
 document.head.append(Object.assign(document.createElement("link"),{rel:"stylesheet",href:"https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap"}));
 
