@@ -47,7 +47,7 @@ const EN={
   // keyboard shortcuts
   "キーボードショートカット":"Keyboard shortcuts","一覧":"List","範囲選択":"Select range","先頭 / 末尾":"First / Last","開く":"Open",
   "選択解除":"Deselect","サイドバー":"Sidebar","列数を指定 / 自動":"Set columns / Auto","グリッド / ウォーターフォール":"Grid / Waterfall",
-  "ビューア":"Viewer","前 / 次":"Previous / Next","拡大 / 縮小 / 全体":"Zoom in / out / Fit","前 / 次のページ":"Previous / Next page","再生 / 停止":"Play / Pause",
+  "ビューア":"Viewer","前 / 次":"Previous / Next","拡大 / 縮小":"Zoom in / out","ビューアのホイール":"Viewer mouse wheel","ホイール":"Wheel","拡大 / 縮小 / 全体":"Zoom in / out / Fit","前 / 次のページ":"Previous / Next page","再生 / 停止":"Play / Pause",
 };
 
 const fill=(s,v)=>s.replace(/\{(\w+)(?:\|(\w+))?\}/g,(_,k,w)=>w?`${v[k]} ${w}${v[k]==1?"":"s"}`:v[k]);
