@@ -814,10 +814,10 @@ stage.addEventListener("wheel",e=>{if(selfInput(e.target))return;e.preventDefaul
 let gs=1;stage.addEventListener("gesturestart",e=>{e.preventDefault();gs=1});
 stage.addEventListener("gesturechange",e=>{e.preventDefault();if(pts.size>1)return;const [x,y]=rel(e);zoomAt(e.scale/gs,x,y);gs=e.scale});
 // Swipe (touch/pen at fit size): the item follows the finger sideways; release past 15% of the width or with a flick to page, otherwise it springs back.
-let sw=null,swiped=false;
-stage.addEventListener("pointerdown",e=>{if(selfInput(e.target))return;stage.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);
+let sw=null,swiped=false,multi=false;
+stage.addEventListener("pointerdown",e=>{if(selfInput(e.target))return;stage.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);if(pts.size===1)multi=false;
   if(pts.size===1&&e.pointerType!=="mouse"&&(!V.el||Math.abs(V.z-V.fit)<.001)){settle();sw={x:V.x,t:performance.now(),v:0,moved:0}}else sw=null;
-  if(pts.size===2){const [a,b]=[...pts.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])}}});
+  if(pts.size===2){const [a,b]=[...pts.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])};multi=true}});
 stage.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;const p=pts.get(e.pointerId);
   if(pts.size===2&&pinch){pts.set(e.pointerId,[e.clientX,e.clientY]);const [a,b]=[...pts.values()];const d=Math.hypot(a[0]-b[0],a[1]-b[1]);const r=stage.getBoundingClientRect();zoomAt(d/pinch.d,(a[0]+b[0])/2-r.left-r.width/2,(a[1]+b[1])/2-r.top-r.height/2);pinch.d=d;return}
   if(sw){const dx=e.clientX-p[0],n=performance.now(),edge=(V.i===0&&V.x+dx>0)||(V.i===list.length-1&&V.x+dx<0);
@@ -828,7 +828,8 @@ const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(!sw||pts.size)r
   const d=V.x<-stage.clientWidth*.15||(s.v<-.3&&V.x<-15)?1:V.x>stage.clientWidth*.15||(s.v>.3&&V.x>15)?-1:0;
   if(d&&list[V.i+d])go(d,true);else if(V.x)glide(0,200)};
 stage.addEventListener("pointerup",up);stage.addEventListener("pointercancel",up);
-let lastTap=0;stage.addEventListener("pointerup",e=>{if(selfInput(e.target))return;const n=Date.now();if(swiped){swiped=false;lastTap=0;return}
+// Lifting the fingers after a pinch isn't a double tap, so the zoom stays.
+let lastTap=0;stage.addEventListener("pointerup",e=>{if(selfInput(e.target))return;const n=Date.now();if(swiped){swiped=false;lastTap=0;return}if(multi){if(!pts.size)multi=false;lastTap=0;return}
   if(V.audio&&e.target===vc&&V.audio.duration){const r=vc.getBoundingClientRect();V.audio.currentTime=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*V.audio.duration;lastTap=0;return}if(n-lastTap<300){const [x,y]=rel(e);Math.abs(V.z-V.fit)<.001?zoomAt(2.5/V.z*V.fit>1?2.5:1/V.z,x,y):fitV()}lastTap=n});
 function vTrash(){const it=list[V.i];if(!it||it.trashed)return;it.trashed=true;save();renderSide();list.splice(V.i,1);toast("ゴミ箱へ移動しました");if(!list.length)return closeViewer();V.i=Math.min(V.i,list.length-1);loadV()}
 document.addEventListener("keydown",e=>{if($("viewer").hidden||e.target.id==="vTagInput")return;if(e.altKey||((e.metaKey||e.ctrlKey)&&e.target!==vt))return;if(e.target===vt){if(e.key==="Escape")vt.blur();if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();vt.oninput()}return}
