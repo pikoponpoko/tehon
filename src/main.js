@@ -2,6 +2,7 @@ import "./styles.css";
 import * as dbx from "./dropbox";
 import { EAGLE_IMPORT } from "./config";
 import * as eagle from "./eagle";
+import * as fmt from "./formats.js";
 import PTHEMES from "./themes.json";
 
 if(import.meta.env.PROD&&"serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
@@ -79,17 +80,34 @@ function thumb(it){
 /* Dropbox */
 // Thumbnails are asked for in screen order (see lazy); saved ones come from IndexedDB, the rest in small parallel batches.
 const thumbQ=[],thumbAsked=new Set();let thumbBusy=0,thumbT;
-function queueThumb(it,fresh=false){if(thumbAsked.has(it.id))return;thumbAsked.add(it.id);thumbQ.push({id:it.id,rev:it.rev,fresh});clearTimeout(thumbT);thumbT=setTimeout(pumpThumbs,16)}
+function queueThumb(it,fresh=false){if(thumbAsked.has(it.id))return;thumbAsked.add(it.id);if(it.fmt&&!fmt.dropboxFirst(it.fmt)&&!fresh)return dbx.cacheGet([{key:it.id,rev:it.rev}]).then(m=>{const b=m.get(it.id);if(b instanceof ArrayBuffer&&b.byteLength)setThumb(it.id,new Blob([b]));else renderThumb(it)},()=>renderThumb(it));thumbQ.push({id:it.id,rev:it.rev,fresh,it});clearTimeout(thumbT);thumbT=setTimeout(pumpThumbs,16)}
 function setThumb(id,b){const u=b?URL.createObjectURL(b):BLANK;thumbCache.set(id,u);if(b)document.querySelectorAll(`img[data-id="${CSS.escape(id)}"]`).forEach(im=>im.src=u)}
 function pumpThumbs(){
   while(thumbQ.length&&thumbBusy<6){
     const fs=thumbQ.splice(0,10);thumbBusy++;
-    dbx.thumbnails(fs,setThumb).catch(()=>{
+    dbx.thumbnails(fs,(id,b)=>{const it=fs.find(f=>f.id===id)?.it;if(!b&&it?.fmt)renderThumb(it);else setThumb(id,b)}).catch(()=>{
       // A failed request is tried again twice, a few seconds apart, so no card is left without its thumbnail.
       const left=fs.filter(f=>!thumbCache.has(f.id));left.forEach(f=>f.tries=(f.tries||0)+1);
       const again=left.filter(f=>f.tries<3);left.filter(f=>f.tries>=3).forEach(f=>thumbAsked.delete(f.id));
       if(again.length)setTimeout(()=>{thumbQ.push(...again);pumpThumbs()},3000*again[0].tries)}).finally(()=>{thumbBusy--;pumpThumbs()});
   }
+}
+// Thumbnails Dropbox can't make are drawn here from the file (formats.js), 2 at a time, and kept like Dropbox's.
+// The last few files stay in memory so opening one right after its card was drawn doesn't download it again.
+const rendQ=[],fileMem=new Map();let rendBusy=0;
+const extOf=n=>{const d=n.lastIndexOf(".");return d>0?n.slice(d+1).toLowerCase():""};
+function source(it){
+  const c=fileMem.get(it.id);if(c&&c.rev===it.rev){fileMem.delete(it.id);fileMem.set(it.id,c);return c.p}
+  const p=it.fmt==="office"||it.fmt==="sheet"?dbx.preview(it.id):dbx.fileBlob(it.id);
+  if((it.size||0)<6e7){fileMem.set(it.id,{rev:it.rev,p});p.catch(()=>fileMem.delete(it.id));while(fileMem.size>3)fileMem.delete(fileMem.keys().next().value)}
+  return p;
+}
+function renderThumb(it){rendQ.push(it);pumpRender()}
+function pumpRender(){
+  while(rendQ.length&&rendBusy<2){const it=rendQ.shift();rendBusy++;
+    (it.size>3e8?Promise.resolve(null):source(it).then(s=>fmt.picture(s,it.fmt,extOf(it.name),it.name,640,true)).then(c=>c&&fmt.toBlob(c))).catch(()=>null)
+      .then(b=>{setThumb(it.id,b);if(b)b.arrayBuffer().then(buf=>dbx.cacheSet([{key:it.id,rev:it.rev,value:buf}])).catch(()=>{})})
+      .finally(()=>{rendBusy--;pumpRender()})}
 }
 // Every card of a chunk is asked for, nearest the top of the screen first. Not an IntersectionObserver: Safari misplaces
 // elements in the waterfall's later columns, so their cards were never loaded.
@@ -143,7 +161,7 @@ function preVideo(it){
 }
 function prefetch(it){if(!it?.dbx||!it.viewable)return;it.kind==="video"?preVideo(it):it.kind!=="text"&&it.kind!=="url"&&full(it).catch(()=>{})}
 function prefetchAround(){for(const d of[1,-1,2])prefetch(list[V.i+d])}
-const VIEW_EXT=["jpg","jpeg","png","gif","webp","bmp","svg","avif","ico"],VID_EXT=["mp4","webm","mov","m4v","ogv"],TXT_EXT=["txt","md","text","csv","json"];
+const VIEW_EXT=["jpg","jpeg","png","gif","webp","bmp","svg","avif","ico"],VID_EXT=["mp4","webm","mov","m4v","ogv","mkv","3gp","avi","wmv","flv","mpg","mpeg","mts","m2ts"],TXT_EXT=["txt","md","text","csv","json","tsv","htm","html","xml","yaml","yml","log","ini"];
 /* text thumbnail: fewer characters → larger type */
 function txtSize(t){const n=t.replace(/\s+/g,"").length;return n<=10?24:n<=25?19:n<=50?16:n<=100?13.5:11.5}
 function kindOf(ext){return ext==="gif"?"gif":VID_EXT.includes(ext)?"video":TXT_EXT.includes(ext)?"text":"image"}
@@ -163,8 +181,9 @@ function dbxItem(e,m){
   const dot=e.name.lastIndexOf(".");const ext=dot>0?e.name.slice(dot+1).toLowerCase():"";const kind=kindOf(ext);
   const p=e.path_display.slice(1);const folder=p.includes("/")?p.slice(0,p.lastIndexOf("/")):"";
   const d=e.media_info?.metadata?.dimensions;
-  return {id:e.id,name:e.name,folder,kind,dbx:true,size:e.size,path:e.path_display,rev:e.rev,badge:kind==="image"&&!VIEW_EXT.includes(ext)?ext||"file":null,
-    viewable:kind!=="image"||VIEW_EXT.includes(ext),thumbable:dbx.THUMB_EXT.includes(ext),
+  const f=["svg","avif","ico"].includes(ext)?"native":kind==="image"&&!VIEW_EXT.includes(ext)?fmt.fmtOf(ext):null;
+  return {id:e.id,name:e.name,folder,kind,dbx:true,size:e.size,path:e.path_display,rev:e.rev,badge:kind==="image"&&!VIEW_EXT.includes(ext)?ext||"file":null,fmt:f,
+    viewable:kind!=="image"||VIEW_EXT.includes(ext)||!!f,thumbable:dbx.THUMB_EXT.includes(ext)||!!f,
     tags:m?.tags||[],favorite:!!m?.favorite,trashed:!!m?.trashed,url:null,w:d?.width||0,h:d?.height||0,
     addedAt:Date.parse(e.client_modified||e.server_modified||"")||0};
 }
@@ -357,7 +376,7 @@ function dropImp(){if(!st.imp)return;st.imp=false;st.sel.clear();renderGrid();re
 function rangeTo(i){if(st.anchor==null)st.anchor=curIdx()??i;st.sel.clear();const a=Math.min(st.anchor,i),b=Math.max(st.anchor,i);for(let k=a;k<=b;k++)st.sel.add(list[k].id);renderGrid();renderSel();focusCard(i)}
 function keysDlg(){const m=MAC?"⌘":"Ctrl";
   const K=[["一覧",[["← → ↑ ↓","移動"],["Shift + ← → ↑ ↓","範囲選択"],["Home / End","先頭 / 末尾"],["Enter","開く"],["Space","選択"],[m+" + A","すべて選択"],["Esc","選択解除"],["F","お気に入り"],["T","タグを追加"],["M","移動"],["Delete","ゴミ箱へ"],["/ , "+m+" + F","検索"],["N","追加"],["+ / -","列数"],["1〜9 / 0","列数を指定 / 自動"],["S","サイドバー"],["G","グリッド / ウォーターフォール"]]],
-    ["ビューア",[["← →","前 / 次"],["+ / - / 0","拡大 / 縮小 / 全体"],["1","100%"],["Space","再生 / 停止"],["F","お気に入り"],["T","タグ"],["Delete","ゴミ箱へ"],["Esc","閉じる"]]]];
+    ["ビューア",[["← →","前 / 次"],["+ / - / 0","拡大 / 縮小 / 全体"],["1","100%"],["↑ ↓","前 / 次のページ"],["Space","再生 / 停止"],["F","お気に入り"],["T","タグ"],["Delete","ゴミ箱へ"],["Esc","閉じる"]]]];
   formDlg("キーボードショートカット",K.map(([h,r])=>`<div class="keys"><b>${h}</b>${r.map(([k,l])=>`<span>${l}</span><kbd>${esc(k)}</kbd>`).join("")}</div>`).join(""),"閉じる",()=>{},()=>{$("dCancel").hidden=true;$("dlgForm").querySelector(".pri").focus()})}
 document.addEventListener("keydown",e=>{
   if(!$("viewer").hidden||!$("dlg").hidden||e.altKey||e.isComposing)return;
@@ -626,7 +645,9 @@ const V={i:0,z:1,x:0,y:0,fit:1,raf:0,play:true,img:null,video:null};
 const vc=$("vc"),vx=vc.getContext("2d");
 function openViewer(i){V.i=i;$("viewer").hidden=false;loadV()}
 const vi=$("vi");let vv=$("vv");
-const vt=$("vt");let vtTimer;
+const vt=$("vt"),vh=$("vh");let v3=$("v3"),vtTimer;
+// vt (text), v3 (3D) and vh (spreadsheet) handle their own pointer input and aren't zoomed.
+const selfInput=el=>el===vt||el===v3||el===vh;
 const vf=$("vf");
 // YouTube/Vimeo bookmarks play in the official embed player; Shorts are portrait.
 function embedOf(u){
@@ -642,10 +663,38 @@ function embedOf(u){
     const hash=x.searchParams.get("h")||(p[i+1]&&/^[\da-f]+$/.test(p[i+1])?p[i+1]:"");
     return{src:`https://player.vimeo.com/video/${p[i]}?autoplay=1${hash?"&h="+hash:""}`,w:1280,h:720}}
   return null}
-function useEl(el,w,h){[vc,vi,vv,vt,vf].forEach(x=>x.hidden=x!==el);if(el!==vf)vf.removeAttribute("src");["vIn","vOut","vFit"].forEach(b=>$(b).hidden=el===vt||el===vf);if(el===vt){V.el=null;V.enter=null;return}V.el=el;V.w=w;V.h=h;fitV()}
-function closeViewer(){settle(true);V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");vf.removeAttribute("src");renderGrid();cardAt(V.i)?.focus()}
+function useEl(el,w,h){[vc,vi,vv,vt,vf,v3,vh].forEach(x=>x.hidden=x!==el);if(el!==vf)vf.removeAttribute("src");["vIn","vOut","vFit"].forEach(b=>$(b).hidden=selfInput(el)||el===vf);if(selfInput(el)){V.el=null;V.enter=null;return}V.el=el;V.w=w;V.h=h;fitV()}
+// Files drawn on this device (formats.js): PDF and office pages, PSD, RAW…; audio plays over its waveform; 3D models turn with the pointer.
+let fmtEnd=null;
+function endFmt(){const e=fmtEnd;fmtEnd=null;V.doc=null;V.audio=null;$("vPage").hidden=true;if(vh.srcdoc)vh.removeAttribute("srcdoc");if(e)e()}
+const toVc=c=>{vc.width=c.width;vc.height=c.height;vx.drawImage(c,0,0);useEl(vc,c.width,c.height)};
+async function showPage(n){const d=V.doc;if(!d||n<1||n>d.n)return;d.p=n;$("vPgN").textContent=n+" / "+d.n;
+  const c=await fmt.pdfPage(d.doc,n,3000).catch(()=>null);if(V.doc===d&&d.p===n&&c)toVc(c)}
+async function openFmt(it,ph){
+  const live=()=>list[V.i]===it&&!$("viewer").hidden,ext=extOf(it.name);ph();$("vState").textContent="読み込み中";
+  try{
+    const src=await source(it);if(!live())return;
+    if(it.fmt==="model"){const c=v3.cloneNode();v3.replaceWith(c);v3=c;useEl(v3);const end=await fmt.modelViewer(v3,src,ext);if(live()&&!fmtEnd)fmtEnd=end;else end()}
+    else if(it.fmt==="sheet"&&src.type.includes("html")){const s=getComputedStyle($("viewer")),c=n=>s.getPropertyValue(n).trim();
+      vh.srcdoc=`<style>body{margin:16px;background:${c("--vpanel")};color:${c("--vfg")};font:13px ${c("--sans")}}td,th{border:1px solid ${c("--vline")};padding:2px 6px}table{border-collapse:collapse}</style>`+await src.blob.text();useEl(vh)}
+    else if(it.fmt==="audio"){
+      const {peaks}=await fmt.peaks(src,240);if(!live())return;
+      const u=URL.createObjectURL(src),a=new Audio(u);let raf=0;V.audio=V.video=a;V.play=false;$("vPlay").hidden=false;$("vPlay").textContent="▶";
+      a.onended=()=>{V.play=false;$("vPlay").textContent="▶"};
+      vc.width=1600;vc.height=400;useEl(vc,1600,400);
+      const s=getComputedStyle($("viewer")),on=s.getPropertyValue("--accent"),off=s.getPropertyValue("--vline"),f=()=>{vx.clearRect(0,0,1600,400);fmt.drawWave(vx,1600,400,peaks,a.duration?a.currentTime/a.duration:0,on,off);raf=requestAnimationFrame(f)};f();
+      fmtEnd=()=>{cancelAnimationFrame(raf);a.pause();a.removeAttribute("src");URL.revokeObjectURL(u)}}
+    else if(it.fmt==="pdf"||src.type?.includes("pdf")){
+      const doc=await fmt.pdfOpen(src.blob||src);if(!live()){doc.close();return}
+      V.doc={doc,n:doc.numPages,p:1};fmtEnd=()=>doc.close();$("vPage").hidden=V.doc.n<2;await showPage(1)}
+    else{const c=await fmt.picture(src,it.fmt,ext,it.name,4096,false);if(!live())return;if(!c)throw 0;toVc(c)}
+    $("vState").textContent="";
+  }catch(e){if(live()){$("vState").textContent="";toast("プレビューできない形式です")}}
+}
+$("vPgUp").onclick=()=>V.doc&&showPage(V.doc.p-1);$("vPgDn").onclick=()=>V.doc&&showPage(V.doc.p+1);
+function closeViewer(){settle(true);endFmt();V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");vf.removeAttribute("src");renderGrid();cardAt(V.i)?.focus()}
 function loadV(){
-  settle(true);cancelAnimationFrame(V.raf);vv.pause();V.video=null;delete vi.dataset.ph;
+  settle(true);cancelAnimationFrame(V.raf);vv.pause();endFmt();V.video=null;delete vi.dataset.ph;
   const it=list[V.i];$("vTitle").textContent=it.name;$("vFav").classList.toggle("on",it.favorite);
   const anim=it.kind==="gif"||it.kind==="video";$("vPlay").hidden=!anim||((it.local||it.dbx)&&it.kind==="gif");V.play=true;$("vPlay").textContent="❚❚";
   renderFoot(it);$("vState").textContent="";$("vReload").hidden=true;
@@ -667,6 +716,7 @@ function loadV(){
     // The thumbnail stands in at the final size until the full image or the video's first frame is ready.
     const t=thumbCache.get(it.id),ph=()=>{if(!t||t===BLANK)return;vi.onload=()=>{if(vi.src!==t||V.el===vv)return;const w=vi.naturalWidth,h=vi.naturalHeight,r=$("stage").getBoundingClientRect();
         const k=it.w&&it.h?it.w/w:w<480&&h<320?1:Math.max(r.width/w,r.height/h);useEl(vi,w*k,it.w&&it.h?it.h:h*k);vi.dataset.ph="1"};vi.onerror=null;vi.src=t};
+    if(it.fmt&&it.fmt!=="native"){openFmt(it,ph);return}
     if(it.kind==="video"){
       const pre=vidPool.get(it.id);vidPool.delete(it.id);
       if(pre){pre.id="vv";pre.hidden=true;vv.replaceWith(pre);vv.removeAttribute("src");vv.load();vv=pre}
@@ -736,12 +786,12 @@ $("vFav").onclick=()=>{const it=list[V.i];it.favorite=!it.favorite;save();$("vFa
 $("vPlay").onclick=()=>{V.play=!V.play;$("vPlay").textContent=V.play?"❚❚":"▶";if(V.video)V.play?V.video.play():V.video.pause()};
 const stage=$("stage");const pts=new Map();let pinch=null;
 const rel=e=>{const r=stage.getBoundingClientRect();return[e.clientX-r.left-r.width/2,e.clientY-r.top-r.height/2]};
-stage.addEventListener("wheel",e=>{if(e.target===vt)return;e.preventDefault();const [x,y]=rel(e);zoomAt(Math.exp(-e.deltaY*(e.ctrlKey?.01:.0015)),x,y)},{passive:false});
+stage.addEventListener("wheel",e=>{if(selfInput(e.target))return;e.preventDefault();const [x,y]=rel(e);zoomAt(Math.exp(-e.deltaY*(e.ctrlKey?.01:.0015)),x,y)},{passive:false});
 let gs=1;stage.addEventListener("gesturestart",e=>{e.preventDefault();gs=1});
 stage.addEventListener("gesturechange",e=>{e.preventDefault();if(pts.size>1)return;const [x,y]=rel(e);zoomAt(e.scale/gs,x,y);gs=e.scale});
 // Swipe (touch/pen at fit size): the item follows the finger sideways; release past 15% of the width or with a flick to page, otherwise it springs back.
 let sw=null,swiped=false;
-stage.addEventListener("pointerdown",e=>{if(e.target===vt)return;stage.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);
+stage.addEventListener("pointerdown",e=>{if(selfInput(e.target))return;stage.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);
   if(pts.size===1&&e.pointerType!=="mouse"&&(!V.el||Math.abs(V.z-V.fit)<.001)){settle();sw={x:V.x,t:performance.now(),v:0,moved:0}}else sw=null;
   if(pts.size===2){const [a,b]=[...pts.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])}}});
 stage.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;const p=pts.get(e.pointerId);
@@ -754,10 +804,11 @@ const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(!sw||pts.size)r
   const d=V.x<-stage.clientWidth*.15||(s.v<-.3&&V.x<-15)?1:V.x>stage.clientWidth*.15||(s.v>.3&&V.x>15)?-1:0;
   if(d&&list[V.i+d])go(d,true);else if(V.x)glide(0,200)};
 stage.addEventListener("pointerup",up);stage.addEventListener("pointercancel",up);
-let lastTap=0;stage.addEventListener("pointerup",e=>{if(e.target===vt)return;const n=Date.now();if(swiped){swiped=false;lastTap=0;return}if(n-lastTap<300){const [x,y]=rel(e);Math.abs(V.z-V.fit)<.001?zoomAt(2.5/V.z*V.fit>1?2.5:1/V.z,x,y):fitV()}lastTap=n});
+let lastTap=0;stage.addEventListener("pointerup",e=>{if(selfInput(e.target))return;const n=Date.now();if(swiped){swiped=false;lastTap=0;return}
+  if(V.audio&&e.target===vc&&V.audio.duration){const r=vc.getBoundingClientRect();V.audio.currentTime=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*V.audio.duration;lastTap=0;return}if(n-lastTap<300){const [x,y]=rel(e);Math.abs(V.z-V.fit)<.001?zoomAt(2.5/V.z*V.fit>1?2.5:1/V.z,x,y):fitV()}lastTap=n});
 function vTrash(){const it=list[V.i];if(!it||it.trashed)return;it.trashed=true;save();renderSide();list.splice(V.i,1);toast("ゴミ箱へ移動しました");if(!list.length)return closeViewer();V.i=Math.min(V.i,list.length-1);loadV()}
 document.addEventListener("keydown",e=>{if($("viewer").hidden||e.target.id==="vTagInput")return;if(e.altKey||((e.metaKey||e.ctrlKey)&&e.target!==vt))return;if(e.target===vt){if(e.key==="Escape")vt.blur();if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();vt.oninput()}return}
-  ({Escape:closeViewer,ArrowLeft:()=>$("vPrev").click(),ArrowRight:()=>$("vNext").click(),"+":()=>zoomAt(1.25),"=":()=>zoomAt(1.25),"-":()=>zoomAt(.8),"0":fitV,"1":()=>{if(V.el&&V.el!==vf){V.z=1;V.x=0;V.y=0;applyV()}},Delete:vTrash,Backspace:vTrash,f:()=>$("vFav").click()," ":()=>$("vPlay").click(),t:()=>{e.preventDefault();$("vTagInput").focus()}}[e.key]||(()=>{}))()});
+  ({Escape:closeViewer,ArrowLeft:()=>$("vPrev").click(),ArrowRight:()=>$("vNext").click(),"+":()=>zoomAt(1.25),"=":()=>zoomAt(1.25),"-":()=>zoomAt(.8),"0":fitV,"1":()=>{if(V.el&&V.el!==vf){V.z=1;V.x=0;V.y=0;applyV()}},ArrowUp:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p-1)}},ArrowDown:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p+1)}},PageUp:()=>V.doc&&showPage(V.doc.p-1),PageDown:()=>V.doc&&showPage(V.doc.p+1),Delete:vTrash,Backspace:vTrash,f:()=>$("vFav").click()," ":()=>$("vPlay").click(),t:()=>{e.preventDefault();$("vTagInput").focus()}}[e.key]||(()=>{}))()});
 addEventListener("resize",()=>{if(!$("viewer").hidden)fitV()});
 
 document.querySelectorAll(".sb").forEach(el=>{let t;el.addEventListener("scroll",()=>{el.classList.add("show");clearTimeout(t);t=setTimeout(()=>el.classList.remove("show"),900)},{passive:true})});

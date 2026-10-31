@@ -1,5 +1,5 @@
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.dropboxusercontent.com; media-src 'self' blob: https://*.dropboxusercontent.com; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; connect-src 'self' https://api.dropboxapi.com https://content.dropboxapi.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.dropboxusercontent.com; media-src 'self' blob: https://*.dropboxusercontent.com; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; connect-src 'self' data: blob: https://api.dropboxapi.com https://content.dropboxapi.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
 

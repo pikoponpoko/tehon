@@ -329,6 +329,18 @@ export async function readText(id: string, max = 2e6): Promise<{ text: string; e
   }
 }
 
+/** The whole file. */
+export async function fileBlob(id: string): Promise<Blob> {
+  return (await download(id)).blob;
+}
+
+/** Dropbox's own conversion of office files and EPS: a PDF, or HTML for spreadsheets. */
+export async function preview(id: string): Promise<{ blob: Blob; type: string }> {
+  const r = await call(CONTENT + "files/get_preview", { method: "POST", headers: { "Dropbox-API-Arg": argHeader({ path: id }) } });
+  const blob = await r.blob();
+  return { blob, type: r.headers.get("Content-Type") || blob.type };
+}
+
 export class ConflictError extends Error {}
 
 /** Overwrites a UTF-8 text file only if it is still at `rev`; otherwise throws ConflictError and leaves Dropbox untouched. */
