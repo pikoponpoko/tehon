@@ -223,7 +223,7 @@ async function loadDropbox(keep=false){
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
 const folderOpts=sel=>(dbxMode?["",...FOLDERS]:FOLDERS).map(f=>`<option value="${esc(f)}"${f===sel?" selected":""}>${f?esc(f):"/"}</option>`).join("");
 /* state */
-const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,tag:null,q:"",sort:"added-desc",sel:new Set(),selecting:false,anchor:null};
+const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,tag:null,q:"",sort:"added-desc",type:"",sel:new Set(),selecting:false,anchor:null};
 let list=[];
 function filtered(){
   const q=st.q.trim().toLowerCase();
@@ -232,14 +232,27 @@ function filtered(){
   if(st.view==="url")l=l.filter(it=>it.kind==="url");
   if(st.folder)l=l.filter(it=>it.folder===st.folder||it.folder.startsWith(st.folder+"/"));
   if(st.tag)l=l.filter(it=>it.tags.includes(st.tag));
+  if(st.type)l=l.filter(it=>typeOf(it)===st.type);
   if(q)l=l.filter(it=>(it.name+" "+it.folder+" "+it.tags.join(" ")+" "+(it.url||"")).toLowerCase().includes(q));
   if(st.sort==="random"){const r=x=>{let h=st.rseed;for(const c of x.id)h=Math.imul(h^c.charCodeAt(0),2654435761);return h>>>0};return l.sort((x,y)=>r(x)-r(y))}
   const [k,d]=st.sort.split("-");
   l.sort((x,y)=>k==="name"?x.name.localeCompare(y.name,"ja"):k==="kind"?x.kind.localeCompare(y.kind)||y.addedAt-x.addedAt:(d==="asc"?x.addedAt-y.addedAt:y.addedAt-x.addedAt));
   return l;
 }
+// File type for the type filter: unviewable images (PSD, AI…) are split out by extension.
+const typeOf=it=>it.badge?"x:"+it.badge:it.kind;
+const TYPE_NAMES={image:"画像",gif:"GIF",video:"動画",text:"テキスト",url:"URL"};
+function renderTypes(){
+  const cnt=new Map();items.forEach(i=>{if(!i.trashed){const t=typeOf(i);cnt.set(t,(cnt.get(t)||0)+1)}});
+  if(st.type&&!cnt.has(st.type))cnt.set(st.type,0);
+  const ks=Object.keys(TYPE_NAMES),ord=t=>{const i=ks.indexOf(t);return i<0?ks.length:i};
+  const ts=[...cnt.keys()].sort((a,b)=>ord(a)-ord(b)||a.localeCompare(b));
+  $("type").innerHTML=`<option value="">すべての種類</option>`+ts.map(t=>`<option value="${esc(t)}">${esc(TYPE_NAMES[t]||t.replace(/^x:/,"").toUpperCase())} (${cnt.get(t)})</option>`).join("");
+  $("type").value=st.type;$("typeW").classList.toggle("on",!!st.type);
+}
 function navBtn(label,n,on,fn,cls=""){const b=document.createElement("button");b.className=(on?"on ":"")+cls;b.innerHTML=`<span></span><span class="n">${n}</span>`;b.firstChild.textContent=label;b.onclick=()=>{fn();closeNav()};return b}
 function renderSide(){
+  renderTypes();
   const live=items.filter(i=>!i.trashed);
   const lib=$("lib");lib.replaceChildren(
     navBtn("すべて",live.length,st.view==="all"&&!st.folder&&!st.tag,()=>setView("all")),
@@ -398,6 +411,7 @@ document.addEventListener("keydown",e=>{
 
 /* toolbar */
 $("q").oninput=e=>{st.q=e.target.value;renderGrid()};
+$("type").onchange=e=>{st.type=e.target.value;$("typeW").classList.toggle("on",!!st.type);renderGrid();$("wrap").scrollTop=0};
 $("sort").onchange=e=>{st.sort=e.target.value;if(st.sort==="random")st.rseed=Date.now()|0;$("shuffle").hidden=st.sort!=="random";renderGrid();$("wrap").scrollTop=0};
 $("shuffle").onclick=()=>{st.rseed=(Date.now()^Math.random()*1e9)|0;renderGrid();$("wrap").scrollTop=0};
 function setLayout(l){const ch=st.layout!==l;st.layout=l;$("grid").classList.toggle("fall",l==="fall");if(ch&&list.length)renderGrid();$("lGrid").classList.toggle("on",l==="grid");$("lFall").classList.toggle("on",l==="fall");try{localStorage.setItem("tehon-layout",l)}catch(e){}}
@@ -634,7 +648,22 @@ const vi=$("vi");let vv=$("vv");
 const vt=$("vt"),vh=$("vh");let v3=$("v3"),vtTimer;
 // vt (text), v3 (3D) and vh (spreadsheet) handle their own pointer input and aren't zoomed.
 const selfInput=el=>el===vt||el===v3||el===vh;
-function useEl(el,w,h){[vc,vi,vv,vt,v3,vh].forEach(x=>x.hidden=x!==el);["vIn","vOut","vFit"].forEach(b=>$(b).hidden=selfInput(el));if(selfInput(el)){V.el=null;V.enter=null;return}V.el=el;V.w=w;V.h=h;fitV()}
+const vf=$("vf");
+// YouTube/Vimeo bookmarks play in the official embed player; Shorts are portrait.
+function embedOf(u){
+  let x;try{x=new URL(u)}catch{return null}
+  const h=x.hostname.replace(/^(www|m|music)\./,""),p=x.pathname.split("/").filter(Boolean);
+  if(h==="youtube.com"||h==="youtube-nocookie.com"||h==="youtu.be"){
+    const id=h==="youtu.be"?p[0]:p[0]==="watch"?x.searchParams.get("v"):["shorts","embed","live","v"].includes(p[0])?p[1]:null;
+    if(!id||!/^[\w-]{11}$/.test(id))return null;
+    const t=x.searchParams.get("t")||x.searchParams.get("start")||"",m=t.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/),start=m?(+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0):0;
+    return{src:`https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&rel=0${start?"&start="+start:""}`,w:p[0]==="shorts"?608:1280,h:p[0]==="shorts"?1080:720}}
+  if(h==="vimeo.com"||h==="player.vimeo.com"){
+    const i=p.findIndex(s=>/^\d+$/.test(s));if(i<0)return null;
+    const hash=x.searchParams.get("h")||(p[i+1]&&/^[\da-f]+$/.test(p[i+1])?p[i+1]:"");
+    return{src:`https://player.vimeo.com/video/${p[i]}?autoplay=1${hash?"&h="+hash:""}`,w:1280,h:720}}
+  return null}
+function useEl(el,w,h){[vc,vi,vv,vt,vf,v3,vh].forEach(x=>x.hidden=x!==el);if(el!==vf)vf.removeAttribute("src");["vIn","vOut","vFit"].forEach(b=>$(b).hidden=selfInput(el)||el===vf);if(selfInput(el)){V.el=null;V.enter=null;return}V.el=el;V.w=w;V.h=h;fitV()}
 // Files drawn on this device (formats.js): PDF and office pages, PSD, RAW…; audio plays over its waveform; 3D models turn with the pointer.
 let fmtEnd=null;
 function endFmt(){const e=fmtEnd;fmtEnd=null;V.doc=null;V.audio=null;$("vPage").hidden=true;if(vh.srcdoc)vh.removeAttribute("srcdoc");if(e)e()}
@@ -663,7 +692,7 @@ async function openFmt(it,ph){
   }catch(e){if(live()){$("vState").textContent="";toast("プレビューできない形式です")}}
 }
 $("vPgUp").onclick=()=>V.doc&&showPage(V.doc.p-1);$("vPgDn").onclick=()=>V.doc&&showPage(V.doc.p+1);
-function closeViewer(){settle(true);endFmt();V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");renderGrid();cardAt(V.i)?.focus()}
+function closeViewer(){settle(true);endFmt();V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");vf.removeAttribute("src");renderGrid();cardAt(V.i)?.focus()}
 function loadV(){
   settle(true);cancelAnimationFrame(V.raf);vv.pause();endFmt();V.video=null;delete vi.dataset.ph;
   const it=list[V.i];$("vTitle").textContent=it.name;$("vFav").classList.toggle("on",it.favorite);
@@ -673,6 +702,9 @@ function loadV(){
   if(it.kind==="text"){useEl(vt);vt.value="";readText(it).then(t=>{if(list[V.i]!==it)return;vt.value=t;vt.readOnly=!!it.readonly;
       $("vState").textContent=it.readonly?(it.enc==="Shift_JIS"&&it.dbx?"Shift_JIS・閲覧のみ":"2MBを超えるため閲覧のみ"):it.enc==="Shift_JIS"?"Shift_JIS":"";$("vReload").hidden=true});
     vt.oninput=()=>{if(it.conflict)return;clearTimeout(vtTimer);$("vState").textContent="編集中";vtTimer=setTimeout(()=>saveText(it,vt.value),600)};return}
+  const em=it.kind==="url"&&embedOf(it.url);
+  if(em){vf.src=em.src;useEl(vf,em.w,em.h);return}
+  vf.removeAttribute("src");
   if(it.kind==="url"&&thumbCache.get(it.id)){vi.onload=()=>useEl(vi,vi.naturalWidth,vi.naturalHeight);vi.onerror=null;vi.src=thumbCache.get(it.id);return}
   if(it.kind==="url"){vc.width=800;vc.height=450;vx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue("--accent");vx.fillRect(0,0,800,450);vx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue("--on-accent");vx.font="500 28px sans-serif";vx.fillText(it.name,40,200);vx.font="20px monospace";vx.fillText(it.url,40,250);useEl(vc,800,450);return}
   if(it.dbx){
@@ -745,7 +777,7 @@ function go(d,far){const j=V.i+d;if(j<0||j>=list.length){if(V.x)glide(0,200);ret
   const next=()=>{V.i=j;V.enter={d,far};loadV()};
   if(far&&V.el){const w=stage.clientWidth;glide(-d*(w/2+V.w*V.z/2),Math.max(60,Math.min(130,(w-Math.abs(V.x))/2.5)),next)}else{settle();next()}}
 function applyV(){if(!V.el)return;V.el.style.width=V.w+"px";V.el.style.height=V.h+"px";V.el.style.transform=`translate(${V.x-V.w*V.z/2}px,${V.y-V.h*V.z/2}px) scale(${V.z})`;$("vZoom").textContent=Math.round(V.z*100)+"%"}
-function zoomAt(f,cx=0,cy=0){if(!V.el)return;const nz=Math.max(.05,Math.min(16,V.z*f));const k=nz/V.z;V.x=cx-(cx-V.x)*k;V.y=cy-(cy-V.y)*k;V.z=nz;applyV()}
+function zoomAt(f,cx=0,cy=0){if(!V.el||V.el===vf)return;const nz=Math.max(.05,Math.min(16,V.z*f));const k=nz/V.z;V.x=cx-(cx-V.x)*k;V.y=cy-(cy-V.y)*k;V.z=nz;applyV()}
 $("vIn").onclick=()=>zoomAt(1.25);$("vOut").onclick=()=>zoomAt(.8);
 $("vFit").onclick=()=>{if(Math.abs(V.z-V.fit)<.001){V.z=1;V.x=0;V.y=0;applyV()}else fitV()};
 $("vClose").onclick=closeViewer;
@@ -766,7 +798,7 @@ stage.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;const p
   if(pts.size===2&&pinch){pts.set(e.pointerId,[e.clientX,e.clientY]);const [a,b]=[...pts.values()];const d=Math.hypot(a[0]-b[0],a[1]-b[1]);const r=stage.getBoundingClientRect();zoomAt(d/pinch.d,(a[0]+b[0])/2-r.left-r.width/2,(a[1]+b[1])/2-r.top-r.height/2);pinch.d=d;return}
   if(sw){const dx=e.clientX-p[0],n=performance.now(),edge=(V.i===0&&V.x+dx>0)||(V.i===list.length-1&&V.x+dx<0);
     sw.moved+=Math.abs(dx);sw.v=dx/Math.max(1,n-sw.t);sw.t=n;V.x+=edge?dx*.35:dx;pts.set(e.pointerId,[e.clientX,e.clientY]);applyV();return}
-  V.x+=e.clientX-p[0];V.y+=e.clientY-p[1];pts.set(e.pointerId,[e.clientX,e.clientY]);applyV()});
+  if(V.el===vf)return;V.x+=e.clientX-p[0];V.y+=e.clientY-p[1];pts.set(e.pointerId,[e.clientX,e.clientY]);applyV()});
 const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(!sw||pts.size)return;const s=sw;sw=null;swiped=s.moved>10;
   if(e.type==="pointercancel"){glide(0,200);return}
   const d=V.x<-stage.clientWidth*.15||(s.v<-.3&&V.x<-15)?1:V.x>stage.clientWidth*.15||(s.v>.3&&V.x>15)?-1:0;
@@ -776,7 +808,7 @@ let lastTap=0;stage.addEventListener("pointerup",e=>{if(selfInput(e.target))retu
   if(V.audio&&e.target===vc&&V.audio.duration){const r=vc.getBoundingClientRect();V.audio.currentTime=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*V.audio.duration;lastTap=0;return}if(n-lastTap<300){const [x,y]=rel(e);Math.abs(V.z-V.fit)<.001?zoomAt(2.5/V.z*V.fit>1?2.5:1/V.z,x,y):fitV()}lastTap=n});
 function vTrash(){const it=list[V.i];if(!it||it.trashed)return;it.trashed=true;save();renderSide();list.splice(V.i,1);toast("ゴミ箱へ移動しました");if(!list.length)return closeViewer();V.i=Math.min(V.i,list.length-1);loadV()}
 document.addEventListener("keydown",e=>{if($("viewer").hidden||e.target.id==="vTagInput")return;if(e.altKey||((e.metaKey||e.ctrlKey)&&e.target!==vt))return;if(e.target===vt){if(e.key==="Escape")vt.blur();if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();vt.oninput()}return}
-  ({Escape:closeViewer,ArrowLeft:()=>$("vPrev").click(),ArrowRight:()=>$("vNext").click(),"+":()=>zoomAt(1.25),"=":()=>zoomAt(1.25),"-":()=>zoomAt(.8),"0":fitV,"1":()=>{if(V.el){V.z=1;V.x=0;V.y=0;applyV()}},ArrowUp:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p-1)}},ArrowDown:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p+1)}},PageUp:()=>V.doc&&showPage(V.doc.p-1),PageDown:()=>V.doc&&showPage(V.doc.p+1),Delete:vTrash,Backspace:vTrash,f:()=>$("vFav").click()," ":()=>$("vPlay").click(),t:()=>{e.preventDefault();$("vTagInput").focus()}}[e.key]||(()=>{}))()});
+  ({Escape:closeViewer,ArrowLeft:()=>$("vPrev").click(),ArrowRight:()=>$("vNext").click(),"+":()=>zoomAt(1.25),"=":()=>zoomAt(1.25),"-":()=>zoomAt(.8),"0":fitV,"1":()=>{if(V.el&&V.el!==vf){V.z=1;V.x=0;V.y=0;applyV()}},ArrowUp:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p-1)}},ArrowDown:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p+1)}},PageUp:()=>V.doc&&showPage(V.doc.p-1),PageDown:()=>V.doc&&showPage(V.doc.p+1),Delete:vTrash,Backspace:vTrash,f:()=>$("vFav").click()," ":()=>$("vPlay").click(),t:()=>{e.preventDefault();$("vTagInput").focus()}}[e.key]||(()=>{}))()});
 addEventListener("resize",()=>{if(!$("viewer").hidden)fitV()});
 
 document.querySelectorAll(".sb").forEach(el=>{let t;el.addEventListener("scroll",()=>{el.classList.add("show");clearTimeout(t);t=setTimeout(()=>el.classList.remove("show"),900)},{passive:true})});
