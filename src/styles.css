@@ -159,6 +159,7 @@ select.btn{padding-right:8px}
   .search{min-width:0;flex-shrink:1;padding:0 8px}
   .sortw{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:6px 8px}
   .sortic{display:block}
+  .sortw.on .sortic{color:var(--accent)}
   .sortw select{position:absolute;inset:0;width:100%;opacity:0}
   #shuffle{padding:6px 8px}
   #shuffle span{display:none}
