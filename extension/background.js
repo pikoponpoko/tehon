@@ -1,9 +1,9 @@
 // Service worker: Dropbox connection, the save queue (keeps running after the popup closes),
 // and the image context menu. Progress is published in chrome.storage.session.job.
 import * as dbx from "./dbx.js";
-import { fetchInPage } from "./collect.js";
+import { fetchInPage, recordVideo } from "./collect.js";
 
-const TYPES = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/avif": "avif", "image/bmp": "bmp", "image/svg+xml": "svg" };
+const TYPES = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/avif": "avif", "image/bmp": "bmp", "image/svg+xml": "svg", "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov" };
 const EXTS = new Set([...Object.values(TYPES), "jpeg"]);
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -13,7 +13,7 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== "save-image" || !info.srcUrl) return;
   const { last = { folder: "", tags: [] } } = await chrome.storage.local.get("last");
-  enqueue({ tabId: tab?.id, urls: [info.srcUrl], folder: last.folder, tags: last.tags });
+  enqueue({ tabId: tab?.id, items: [{ url: info.srcUrl }], folder: last.folder, tags: last.tags });
 });
 
 chrome.runtime.onMessage.addListener((m, _sender, reply) => {
@@ -71,10 +71,11 @@ async function publish() {
   await chrome.action.setBadgeText({ text: left ? String(left) : job?.failed ? "!" : "" });
 }
 
-function enqueue({ tabId, urls, folder, tags }) {
+// items: { url } for an image, { vid, url? } for a video (url when it can be downloaded as a file).
+function enqueue({ tabId, items, folder, tags }) {
   if (!job || job.done + job.failed === job.total) job = { total: 0, done: 0, failed: 0 };
-  job.total += urls.length;
-  for (const url of urls) queue.push({ tabId, url, folder, tags });
+  job.total += items.length;
+  for (const it of items) queue.push({ tabId, ...it, folder, tags });
   publish();
   if (!running) run();
 }
@@ -85,21 +86,28 @@ async function run() {
   // Extension API calls keep the service worker alive between uploads.
   const alive = setInterval(() => chrome.runtime.getPlatformInfo(), 20e3);
   const saved = [];
-  const worker = async () => {
-    for (let t; (t = queue.shift()); ) {
+  // Recordings play in real time, one at a time; images download three at a time beside them.
+  const take = video => {
+    const i = queue.findIndex(t => !!t.vid === video);
+    return i < 0 ? null : queue.splice(i, 1)[0];
+  };
+  const worker = async video => {
+    for (let t; (t = take(video)); ) {
       try {
-        const blob = await fetchImage(t.url, t.tabId);
-        const meta = await dbx.upload(t.folder, fileName(t.url, blob.type), blob);
+        if (t.vid) (job.recording = true), await publish();
+        const { blob, name } = t.vid ? await getVideo(t) : await fetchImage(t.url, t.tabId).then(b => ({ blob: b, name: fileName(t.url, b.type) }));
+        const meta = await dbx.upload(t.folder, name, blob);
         saved.push({ id: meta.id, tags: t.tags });
         job.done++;
       } catch {
         job.failed++;
       }
+      if (t.vid) job.recording = false;
       await publish();
     }
   };
   try {
-    await Promise.all([worker(), worker(), worker()]);
+    await Promise.all([worker(false), worker(false), worker(false), worker(true)]);
     const tagged = saved.filter(s => s.tags.length);
     if (tagged.length) {
       const now = Date.now();
@@ -132,6 +140,31 @@ async function fetchImage(url, tabId) {
   const b = await (await fetch(res.result)).blob();
   if (!isImage(b, url)) throw new Error("type");
   return b;
+}
+
+async function getVideo(t) {
+  if (t.url) {
+    try {
+      const r = await fetch(t.url, { credentials: "include" });
+      const b = r.ok && (await r.blob());
+      if (b && b.type.startsWith("video/")) return { blob: b, name: fileName(t.url, b.type) };
+    } catch {}
+  }
+  const [res] = await chrome.scripting.executeScript({ target: { tabId: t.tabId }, func: recordVideo, args: [t.vid] });
+  if (!res?.result?.data) throw new Error(res?.result?.error || "record");
+  const blob = await (await fetch(res.result.data)).blob();
+  const tab = await chrome.tabs.get(t.tabId).catch(() => null);
+  return { blob, name: recordingName(tab?.url, blob.type) };
+}
+
+// e.g. instagram.com_20261031-124500.mp4
+function recordingName(url, type) {
+  let host = "video";
+  try {
+    host = new URL(url).hostname.replace(/^www\./, "");
+  } catch {}
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  return `${host}_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.${TYPES[type] || "webm"}`;
 }
 
 const extOf = s => (s.match(/\.([a-z0-9]{2,5})$/i)?.[1] || "").toLowerCase();

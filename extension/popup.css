@@ -36,6 +36,7 @@ input:focus,select:focus,.btn:focus-visible{outline:2px solid var(--accent);outl
 .cell.on .ck{background:var(--accent);border-color:var(--on-accent)}
 .cell.on .ck::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid var(--on-accent);border-width:0 2px 2px 0;transform:rotate(45deg)}
 .cell .sz{position:absolute;right:3px;bottom:3px;font-size:10px;padding:0 4px;border-radius:3px;background:var(--surface);color:var(--muted)}
+.cell.vid::after{content:"";position:absolute;top:7px;right:6px;border-style:solid;border-width:6px 0 6px 10px;border-color:transparent transparent transparent var(--on-accent)}
 .cell:focus-visible{outline:2px solid var(--accent)}
 .foot{border-top:1px solid var(--line);background:var(--surface)}
 .foot #status{margin-right:auto}

@@ -1,5 +1,5 @@
 // Runs inside the page (chrome.scripting.executeScript), so it must stay self-contained.
-// Returns every image the page shows or links to, largest known version first per URL.
+// Returns every image the page shows or links to (largest known version per URL), and its videos.
 export function collectImages() {
   const IMG_EXT = /\.(jpe?g|png|gif|webp|avif|bmp|svg)(\?|#|$)/i;
   const found = new Map();
@@ -56,7 +56,94 @@ export function collectImages() {
     const bg = getComputedStyle(el).backgroundImage;
     if (bg && bg !== "none") for (const m of bg.matchAll(/url\(["']?(.*?)["']?\)/g)) add(m[1], 0, 0);
   }
-  return { title: document.title, url: location.href, images: [...found.values()] };
+  // Videos are tagged so the recorder can find the same element later.
+  const videos = [];
+  for (const v of document.querySelectorAll("video")) {
+    if (!v.currentSrc && !v.src) continue;
+    v.dataset.tehonVid ||= Math.random().toString(36).slice(2, 10);
+    let thumb = v.poster ? abs(v.poster) : "";
+    if (v.readyState >= 2 && v.videoWidth) {
+      try {
+        const c = document.createElement("canvas");
+        const k = Math.min(1, 320 / v.videoWidth);
+        c.width = Math.round(v.videoWidth * k);
+        c.height = Math.round(v.videoHeight * k);
+        c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+        thumb = c.toDataURL("image/jpeg", 0.7);
+      } catch {} // cross-origin video: keep the poster
+    }
+    const src = v.currentSrc || v.src;
+    videos.push({ vid: v.dataset.tehonVid, src: /^https?:/.test(src) ? src : "", thumb, w: v.videoWidth, h: v.videoHeight, duration: isFinite(v.duration) ? v.duration : 0 });
+  }
+  return { title: document.title, url: location.href, images: [...found.values()], videos };
+}
+
+// Plays a video from the start once and records it (video.captureStream + MediaRecorder).
+// For streamed videos (blob: sources, e.g. Instagram) that can't be downloaded as a file.
+export async function recordVideo(vid) {
+  const v = document.querySelector(`video[data-tehon-vid="${vid}"]`);
+  if (!v) return { error: "gone" };
+  const type = ["video/mp4;codecs=avc1.640028,mp4a.40.2", "video/webm;codecs=vp9,opus", "video/webm"].find(t => MediaRecorder.isTypeSupported(t));
+  const loop = v.loop, muted = v.muted;
+  v.loop = false;
+  v.playbackRate = 1;
+  v.currentTime = 0;
+  try {
+    await v.play();
+  } catch {
+    // Autoplay with sound is blocked without a click on the page: record muted instead.
+    v.muted = true;
+    try {
+      await v.play();
+    } catch {
+      v.loop = loop;
+      return { error: "play" };
+    }
+  }
+  let stream;
+  try {
+    stream = v.captureStream();
+  } catch {
+    v.loop = loop;
+    return { error: "capture" };
+  }
+  for (let i = 0; i < 40 && !stream.getVideoTracks().length; i++) await new Promise(r => setTimeout(r, 50));
+  const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 8e6 });
+  const chunks = [];
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  const stopped = new Promise(r => (rec.onstop = r));
+  rec.start(1000);
+  await new Promise(done => {
+    let last = 0;
+    const end = () => {
+      clearInterval(tick);
+      clearTimeout(cap);
+      v.removeEventListener("ended", end);
+      done();
+    };
+    // The page's own player may restart (loop) or pause the video: stop on a jump back, resume on a pause.
+    const tick = setInterval(() => {
+      if (v.currentTime + 0.3 < last) return end();
+      last = v.currentTime;
+      if (v.paused && !v.ended) v.play().catch(() => {});
+    }, 200);
+    const cap = setTimeout(end, ((isFinite(v.duration) && v.duration) || 600) * 1000 + 5000);
+    v.addEventListener("ended", end);
+  });
+  rec.stop();
+  await stopped;
+  v.loop = loop;
+  v.muted = muted;
+  const blob = new Blob(chunks, { type: type.split(";")[0] });
+  if (!blob.size) return { error: "empty" };
+  if (blob.size > 60e6) return { error: "size" };
+  const data = await new Promise(res => {
+    const f = new FileReader();
+    f.onload = () => res(f.result);
+    f.onerror = () => res(null);
+    f.readAsDataURL(blob);
+  });
+  return data ? { data } : { error: "read" };
 }
 
 // Fallback fetch from inside the page, for blob: URLs and images that need the page's cookies.

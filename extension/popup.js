@@ -50,7 +50,11 @@ async function showApp(st) {
   try {
     const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: collectImages });
     page = res.result;
-    images = page.images;
+    // Videos first: they are usually what the page is about (Instagram).
+    images = [
+      ...page.videos.map(v => ({ ...v, key: "v:" + v.vid, url: v.src })),
+      ...page.images.map(i => ({ ...i, key: i.url })),
+    ];
   } catch {
     page = { title: tab.title, url: tab.url };
     images = [];
@@ -65,18 +69,19 @@ const visible = () => images.filter(i => (i.w === 0 && i.h === 0) || Math.max(i.
 
 function render() {
   const list = visible();
-  const shown = new Set(list.map(i => i.url));
+  const shown = new Set(list.map(i => i.key));
   for (const u of sel) if (!shown.has(u)) sel.delete(u);
   $("grid").replaceChildren(
     ...list.map((im, k) => {
       const b = document.createElement("button");
-      b.className = "cell" + (sel.has(im.url) ? " on" : "");
-      b.title = im.alt || im.url;
+      b.className = "cell" + (im.vid ? " vid" : "") + (sel.has(im.key) ? " on" : "");
+      b.title = im.alt || im.url || "";
       const img = new Image();
       img.loading = "lazy";
       img.referrerPolicy = "no-referrer";
-      img.src = im.url;
+      if (im.vid ? im.thumb : im.url) img.src = im.vid ? im.thumb : im.url;
       img.onload = () => {
+        if (im.vid) return;
         if (!im.w && !im.h) {
           im.w = img.naturalWidth;
           im.h = img.naturalHeight;
@@ -88,7 +93,8 @@ function render() {
       ck.className = "ck";
       const sz = document.createElement("span");
       sz.className = "sz";
-      if (im.w) sz.textContent = `${im.w}×${im.h}`;
+      if (im.vid) sz.textContent = im.duration ? clock(im.duration) : "";
+      else if (im.w) sz.textContent = `${im.w}×${im.h}`;
       b.append(img, ck, sz);
       b.onclick = e => toggle(list, k, e.shiftKey);
       return b;
@@ -98,15 +104,17 @@ function render() {
   updateCount();
 }
 
+const clock = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+
 let pending = 0;
 const later = () => (pending ||= requestAnimationFrame(() => ((pending = 0), render())));
 
 function toggle(list, k, range) {
-  const on = !sel.has(list[k].url);
+  const on = !sel.has(list[k].key);
   const [a, z] = range && lastClick >= 0 ? [Math.min(lastClick, k), Math.max(lastClick, k)] : [k, k];
-  for (let i = a; i <= z; i++) on ? sel.add(list[i].url) : sel.delete(list[i].url);
+  for (let i = a; i <= z; i++) on ? sel.add(list[i].key) : sel.delete(list[i].key);
   lastClick = k;
-  [...$("grid").children].forEach((c, i) => c.classList.toggle("on", sel.has(list[i]?.url)));
+  [...$("grid").children].forEach((c, i) => c.classList.toggle("on", sel.has(list[i]?.key)));
   updateCount();
 }
 
@@ -121,8 +129,8 @@ function updateCount() {
 function selectAll() {
   const list = visible();
   if (sel.size === list.length) sel.clear();
-  else list.forEach(i => sel.add(i.url));
-  [...$("grid").children].forEach((c, i) => c.classList.toggle("on", sel.has(list[i]?.url)));
+  else list.forEach(i => sel.add(i.key));
+  [...$("grid").children].forEach((c, i) => c.classList.toggle("on", sel.has(list[i]?.key)));
   updateCount();
 }
 
@@ -133,8 +141,10 @@ const folderValue = () => $("folder").value.trim().replace(/^\/+|\/+$/g, "");
 
 $("save").onclick = async () => {
   if (!sel.size) return;
-  const urls = visible().filter(i => sel.has(i.url)).map(i => i.url);
-  await send({ type: "save", tabId: tab.id, urls, folder: folderValue(), tags: splitTags($("tags").value) });
+  const items = visible()
+    .filter(i => sel.has(i.key))
+    .map(i => (i.vid ? { vid: i.vid, url: i.url } : { url: i.url }));
+  await send({ type: "save", tabId: tab.id, items, folder: folderValue(), tags: splitTags($("tags").value) });
   sel.clear();
   [...$("grid").children].forEach(c => c.classList.remove("on"));
   updateCount();
@@ -153,7 +163,7 @@ function showJob(job) {
   if (!job) return void ($("status").textContent = "");
   $("progBar").style.width = `${((job.done + job.failed) / job.total) * 100}%`;
   $("status").textContent = running
-    ? `保存中 ${job.done + job.failed} / ${job.total}`
+    ? `${job.recording ? "録画中" : "保存中"} ${job.done + job.failed} / ${job.total}`
     : job.failed
       ? `${job.failed}件保存できませんでした`
       : `${job.done}件保存しました`;
