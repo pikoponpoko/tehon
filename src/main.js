@@ -4,6 +4,9 @@ import { EAGLE_IMPORT } from "./config";
 import * as eagle from "./eagle";
 import * as fmt from "./formats.js";
 import PTHEMES from "./themes.json";
+import { L, langPref, setLangPref, translateDom } from "./i18n.js";
+
+translateDom();
 
 if(import.meta.env.PROD&&"serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
 // Web fonts are added from here so their stylesheet doesn't hold up the first render.
@@ -177,8 +180,8 @@ function dbxSave(){
     if(it.kind==="url")own.urls[it.key]={...m,updatedAt:t};else own.items[it.id]={...m,updatedAt:t};ch=true}
   if(ch){clearTimeout(saveT);saveT=setTimeout(flushSave,1500)}
 }
-function flushSave(){if(saveT==null)return;clearTimeout(saveT);saveT=null;$("sync").lastChild.textContent="保存中";
-  dbx.saveDevice(own).then(()=>$("sync").lastChild.textContent="Dropbox").catch(()=>{$("sync").lastChild.textContent="未保存";toast("Dropboxに保存できませんでした")})}
+function flushSave(){if(saveT==null)return;clearTimeout(saveT);saveT=null;$("sync").lastChild.textContent=L("保存中");
+  return dbx.saveDevice(own).then(()=>$("sync").lastChild.textContent="Dropbox").catch(()=>{$("sync").lastChild.textContent=L("未保存");toast(L("Dropboxに保存できませんでした"))})}
 addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushSave()});
 function dbxItem(e,m){
   const dot=e.name.lastIndexOf(".");const ext=dot>0?e.name.slice(dot+1).toLowerCase():"";const kind=kindOf(ext);
@@ -199,9 +202,9 @@ function loadCache(){
 }
 const saveCache=()=>{try{localStorage.setItem(CACHE,JSON.stringify({items,folders:FOLDERS}))}catch(e){}};
 async function loadDropbox(keep=false){
-  $("sync").lastChild.textContent="読み込み中";
+  $("sync").lastChild.textContent=L("読み込み中");
   try{
-    const [entries,meta,em,og]=await Promise.all([dbx.listAll(n=>toast(`読み込み中 ${n} 件`)),dbx.loadMeta(),dbx.loadEagleManifest(),dbx.listTree(OGP_DIR).catch(()=>[])]);
+    const [entries,meta,em,og]=await Promise.all([dbx.listAll(n=>toast(L("読み込み中 {n} 件",{n}))),dbx.loadMeta(),dbx.loadEagleManifest(),dbx.listTree(OGP_DIR).catch(()=>[])]);
     ogpFiles=new Map(og.filter(e=>e[".tag"]==="file").map(e=>[e.name,e.id]));
     own=meta.own;
     const ef=new Map(Object.entries(em?.files||{}).map(([k,v])=>[k.normalize("NFC").toLowerCase(),v]));
@@ -219,8 +222,8 @@ async function loadDropbox(keep=false){
     $("sync").lastChild.textContent="Dropbox";$("toast").hidden=true;render();
   }catch(e){
     dbxPending=false;if(!dbxMode)render();
-    $("sync").lastChild.textContent=dbxMode?"Dropbox":"未接続";
-    toast(e instanceof dbx.DropboxError&&e.status===401?"Dropboxに再接続してください":"Dropboxを読み込めませんでした");
+    $("sync").lastChild.textContent=dbxMode?"Dropbox":L("未接続");
+    toast(e instanceof dbx.DropboxError&&e.status===401?L("Dropboxに再接続してください"):L("Dropboxを読み込めませんでした"));
   }
 }
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
@@ -244,13 +247,13 @@ function filtered(){
 }
 // File type for the type filter: unviewable images (PSD, AI…) are split out by extension.
 const typeOf=it=>it.badge?"x:"+it.badge:it.kind;
-const TYPE_NAMES={image:"画像",gif:"GIF",video:"動画",text:"テキスト",url:"URL"};
+const TYPE_NAMES={image:L("画像"),gif:"GIF",video:L("動画"),text:L("テキスト"),url:"URL"};
 function renderTypes(){
   const cnt=new Map();items.forEach(i=>{if(!i.trashed){const t=typeOf(i);cnt.set(t,(cnt.get(t)||0)+1)}});
   if(st.type&&!cnt.has(st.type))cnt.set(st.type,0);
   const ks=Object.keys(TYPE_NAMES),ord=t=>{const i=ks.indexOf(t);return i<0?ks.length:i};
   const ts=[...cnt.keys()].sort((a,b)=>ord(a)-ord(b)||a.localeCompare(b));
-  $("type").innerHTML=`<option value="">すべての種類</option>`+ts.map(t=>`<option value="${esc(t)}">${esc(TYPE_NAMES[t]||t.replace(/^x:/,"").toUpperCase())} (${cnt.get(t)})</option>`).join("");
+  $("type").innerHTML=`<option value="">${L("すべての種類")}</option>`+ts.map(t=>`<option value="${esc(t)}">${esc(TYPE_NAMES[t]||t.replace(/^x:/,"").toUpperCase())} (${cnt.get(t)})</option>`).join("");
   $("type").value=st.type;$("typeW").classList.toggle("on",!!st.type);
 }
 // Section and folder open/closed state, kept per device.
@@ -262,10 +265,10 @@ function renderSide(){
   renderTypes();
   const live=items.filter(i=>!i.trashed);
   const lib=$("lib");lib.replaceChildren(
-    navBtn("すべて",live.length,st.view==="all"&&!st.folder&&!st.tag,()=>setView("all")),
-    favBtn(navBtn("お気に入り",live.filter(i=>i.favorite).length,st.view==="fav",()=>setView("fav"))),
+    navBtn(L("すべて"),live.length,st.view==="all"&&!st.folder&&!st.tag,()=>setView("all")),
+    favBtn(navBtn(L("お気に入り"),live.filter(i=>i.favorite).length,st.view==="fav",()=>setView("fav"))),
     navBtn("URL",live.filter(i=>i.kind==="url").length,st.view==="url",()=>setView("url")),
-    navBtn("ゴミ箱",items.filter(i=>i.trashed).length,st.view==="trash",()=>setView("trash")));
+    navBtn(L("ゴミ箱"),items.filter(i=>i.trashed).length,st.view==="trash",()=>setView("trash")));
   const f=$("folders");f.replaceChildren();
   const all=new Set();FOLDERS.forEach(x=>{const a=x.split("/");a.forEach((_,i)=>all.add(a.slice(0,i+1).join("/")))});
   const cnt=new Map();live.forEach(i=>{const a=i.folder.split("/");a.forEach((_,k)=>{const q=a.slice(0,k+1).join("/");cnt.set(q,(cnt.get(q)||0)+1)})});
@@ -284,12 +287,12 @@ function renderSide(){
 }
 // Rename (merging into an existing tag of the same name) or delete a tag on every item.
 function editTag(t){
-  formDlg("タグを編集",`<input id="fTag" required><button type="button" class="btn" id="fDel">削除</button>`,"保存",()=>{
+  formDlg(L("タグを編集"),`<input id="fTag" required><button type="button" class="btn" id="fDel">${L("削除")}</button>`,L("保存"),()=>{
     const n=$("fTag").value.trim();if(!n||n===t)return;
     items.forEach(i=>{if(i.tags.includes(t))i.tags=[...new Set(i.tags.map(z=>z===t?n:z))]});
-    if(st.tag===t)st.tag=n;TAGS.splice(0,TAGS.length,...new Set(TAGS.map(z=>z===t?n:z)));save();render();toast(`「${n}」に変更しました`)},
+    if(st.tag===t)st.tag=n;TAGS.splice(0,TAGS.length,...new Set(TAGS.map(z=>z===t?n:z)));save();render();toast(L("「{t}」に変更しました",{t:n}))},
   ()=>{$("fTag").value=t;$("fDel").onclick=()=>{const n=items.filter(i=>i.tags.includes(t)).length;
-    confirmDlg(`「${t}」を削除`,`${n} 件から外します。`,()=>{items.forEach(i=>{if(i.tags.includes(t))i.tags=i.tags.filter(z=>z!==t)});if(st.tag===t)st.tag=null;save();render();toast(`「${t}」を削除しました`)})}});
+    confirmDlg(L("「{t}」を削除",{t}),L("{n} 件から外します。",{n}),()=>{items.forEach(i=>{if(i.tags.includes(t))i.tags=i.tags.filter(z=>z!==t)});if(st.tag===t)st.tag=null;save();render();toast(L("「{t}」を削除しました",{t}))})}});
 }
 function setView(v){st.view=v;st.folder=null;st.tag=null;st.sel.clear();render()}
 function setFolder(f){st.view="all";st.folder=st.folder===f?null:f;st.sel.clear();render()}
@@ -300,9 +303,9 @@ function renderGrid(){
   g.classList.toggle("selecting",st.selecting||st.sel.size>0);
   if(!list.length){
     if(!items.length&&st.view!=="trash"){
-      if(!dbxMode&&!dbxPending&&dbx.isConfigured()){const b=document.createElement("button");b.className="btn";b.textContent="Dropboxに接続";b.onclick=()=>dbx.startAuth();const e=document.createElement("div");e.className="empty";e.append(b);g.append(e)}
+      if(!dbxMode&&!dbxPending&&dbx.isConfigured()){const b=document.createElement("button");b.className="btn";b.textContent=L("Dropboxに接続");b.onclick=()=>dbx.startAuth();const e=document.createElement("div");e.className="empty";e.append(b);g.append(e)}
       return}
-    const e=document.createElement("div");e.className="empty";e.textContent=st.view==="trash"?"ゴミ箱は空です":"該当する資料はありません";g.append(e);return}
+    const e=document.createElement("div");e.className="empty";e.textContent=st.view==="trash"?L("ゴミ箱は空です"):L("該当する資料はありません");g.append(e);return}
   if(st.layout==="fall")g.append(...Array.from({length:curCols()},()=>Object.assign(document.createElement("div"),{className:"mcol",_h:0})));
   appendCards(0);
 }
@@ -335,7 +338,7 @@ function appendCards(start){
       if(it.kind==="gif"&&it.dbx){im._it=it;liveObs().observe(im)}c.append(im)}
     if(it.kind!=="image"||it.badge){const k=document.createElement("span");k.className="kind";k.textContent=(it.badge||it.kind).toUpperCase();c.append(k)}
     const ck=document.createElement("span");ck.className="chk";ck.textContent="✓";c.append(ck);
-    const m=document.createElement("div");m.className="meta";m.innerHTML=`<span class="nm"></span><button class="fv${it.favorite?" on":""}" aria-label="お気に入り">${HEART}</button>`;
+    const m=document.createElement("div");m.className="meta";m.innerHTML=`<span class="nm"></span><button class="fv${it.favorite?" on":""}" aria-label="${L("お気に入り")}">${HEART}</button>`;
     m.firstChild.textContent=it.name;c.append(m);
     if(!placeCard(g,c,it))frag.append(c);
   });
@@ -354,10 +357,10 @@ function liveObs(){return liveIO||=new IntersectionObserver(es=>{for(const e of 
 function dbxLink(it){return it.link&&Date.now()<it.linkExp?Promise.resolve(it.link):dbx.tempLink(it.id).then(l=>{it.link=l;it.linkExp=Date.now()+3.5*3600e3;return l})}
 function renderSel(){
   const n=st.sel.size;$("selbar").hidden=!(n||st.selecting);$("selN").textContent=n;
-  const tr=st.view==="trash";$("bRestore").hidden=!tr;$("bTrash").textContent=tr?"ゴミ箱から削除":"ゴミ箱へ";
+  const tr=st.view==="trash";$("bRestore").hidden=!tr;$("bTrash").textContent=tr?L("ゴミ箱から削除"):L("ゴミ箱へ");
   ["bFav","bTag","bMove"].forEach(x=>$(x).hidden=tr);
   if(dbxMode){$("bMove").hidden=true;$("bTrash").hidden=tr}else $("bTrash").hidden=false;
-  $("selBtn").textContent=st.selecting?"完了":"選択";
+  $("selBtn").textContent=st.selecting?L("完了"):L("選択");
 }
 function render(){renderSide();renderGrid();renderSel()}
 
@@ -389,9 +392,9 @@ function useFocus(){if(st.sel.size)return true;const i=curIdx();if(i==null)retur
 function dropImp(){if(!st.imp)return;st.imp=false;st.sel.clear();renderGrid();renderSel();if(st.anchor!=null)focusCard(st.anchor)}
 function rangeTo(i){if(st.anchor==null)st.anchor=curIdx()??i;st.sel.clear();const a=Math.min(st.anchor,i),b=Math.max(st.anchor,i);for(let k=a;k<=b;k++)st.sel.add(list[k].id);renderGrid();renderSel();focusCard(i)}
 function keysDlg(){const m=MAC?"⌘":"Ctrl";
-  const K=[["一覧",[["← → ↑ ↓","移動"],["Shift + ← → ↑ ↓","範囲選択"],["Home / End","先頭 / 末尾"],["Enter","開く"],["Space","選択"],[m+" + A","すべて選択"],["Esc","選択解除"],["F","お気に入り"],["T","タグを追加"],["M","移動"],["Delete","ゴミ箱へ"],["/ , "+m+" + F","検索"],["N","追加"],["+ / -","列数"],["1〜9 / 0","列数を指定 / 自動"],["S","サイドバー"],["G","グリッド / ウォーターフォール"]]],
-    ["ビューア",[["← →","前 / 次"],["+ / - / 0","拡大 / 縮小 / 全体"],["1","100%"],["↑ ↓","前 / 次のページ"],["Space","再生 / 停止"],["F","お気に入り"],["T","タグ"],["Delete","ゴミ箱へ"],["Esc","閉じる"]]]];
-  formDlg("キーボードショートカット",K.map(([h,r])=>`<div class="keys"><b>${h}</b>${r.map(([k,l])=>`<span>${l}</span><kbd>${esc(k)}</kbd>`).join("")}</div>`).join(""),"閉じる",()=>{},()=>{$("dCancel").hidden=true;$("dlgForm").querySelector(".pri").focus()})}
+  const K=[[L("一覧"),[["← → ↑ ↓",L("移動")],["Shift + ← → ↑ ↓",L("範囲選択")],["Home / End",L("先頭 / 末尾")],["Enter",L("開く")],["Space",L("選択")],[m+" + A",L("すべて選択")],["Esc",L("選択解除")],["F",L("お気に入り")],["T",L("タグを追加")],["M",L("移動")],["Delete",L("ゴミ箱へ")],["/ , "+m+" + F",L("検索")],["N",L("追加")],["+ / -",L("列数")],["1〜9 / 0",L("列数を指定 / 自動")],["S",L("サイドバー")],["G",L("グリッド / ウォーターフォール")]]],
+    [L("ビューア"),[["← →",L("前 / 次")],["+ / - / 0",L("拡大 / 縮小 / 全体")],["1","100%"],["↑ ↓",L("前 / 次のページ")],["Space",L("再生 / 停止")],["F",L("お気に入り")],["T",L("タグ")],["Delete",L("ゴミ箱へ")],["Esc",L("閉じる")]]]];
+  formDlg(L("キーボードショートカット"),K.map(([h,r])=>`<div class="keys"><b>${h}</b>${r.map(([k,l])=>`<span>${l}</span><kbd>${esc(k)}</kbd>`).join("")}</div>`).join(""),L("閉じる"),()=>{},()=>{$("dCancel").hidden=true;$("dlgForm").querySelector(".pri").focus()})}
 document.addEventListener("keydown",e=>{
   if(!$("viewer").hidden||!$("dlg").hidden||e.altKey||e.isComposing)return;
   if(typing(e.target)){if(e.target.id==="q"&&e.key==="Escape"){e.target.blur();focusCard(0)}return}
@@ -454,26 +457,26 @@ $("selBtn").onclick=()=>{st.selecting=!st.selecting;if(!st.selecting)st.sel.clea
 $("bAll").onclick=()=>{list.forEach(i=>st.sel.add(i.id));renderGrid();renderSel()};
 $("bNone").onclick=()=>{st.sel.clear();st.selecting=false;renderGrid();renderSel()};
 const selItems=()=>items.filter(i=>st.sel.has(i.id));
-$("bFav").onclick=()=>{const s=selItems();const v=!s.every(i=>i.favorite);s.forEach(i=>i.favorite=v);save();render();toast(v?"お気に入りに追加しました":"お気に入りを解除しました")};
+$("bFav").onclick=()=>{const s=selItems();const v=!s.every(i=>i.favorite);s.forEach(i=>i.favorite=v);save();render();toast(v?L("お気に入りに追加しました"):L("お気に入りを解除しました"))};
 function trashSel(){
   const s=selItems();
-  if(st.view==="trash"){confirmDlg(`${s.length} 件をゴミ箱から削除`,"Dropboxでは「削除済みファイル」から一定期間復元できます。",()=>{items=items.filter(i=>!st.sel.has(i.id));st.sel.clear();save();render();toast("削除しました")});return}
-  s.forEach(i=>i.trashed=true);st.sel.clear();save();render();toast(`${s.length} 件をゴミ箱へ移動しました`);
+  if(st.view==="trash"){confirmDlg(L("{n} 件をゴミ箱から削除",{n:s.length}),L("Dropboxでは「削除済みファイル」から一定期間復元できます。"),()=>{items=items.filter(i=>!st.sel.has(i.id));st.sel.clear();save();render();toast(L("削除しました"))});return}
+  s.forEach(i=>i.trashed=true);st.sel.clear();save();render();toast(L("{n} 件をゴミ箱へ移動しました",{n:s.length}));
 }
 $("bTrash").onclick=trashSel;
-$("bRestore").onclick=()=>{const s=selItems();s.forEach(i=>i.trashed=false);st.sel.clear();save();render();toast(`${s.length} 件を元に戻しました`)};
+$("bRestore").onclick=()=>{const s=selItems();s.forEach(i=>i.trashed=false);st.sel.clear();save();render();toast(L("{n} 件を元に戻しました",{n:s.length}))};
 $("bTag").onclick=()=>{const s=selItems();const cur=[...new Set(s.flatMap(i=>i.tags))].sort((a,b)=>a.localeCompare(b,"ja"));
-  formDlg("タグ",`<input id="fTag" list="tagList" placeholder="タグ名"><datalist id="tagList">${TAGS.map(t=>`<option value="${esc(t)}">`).join("")}</datalist><div class="tags" id="fCur"></div>`,"追加",()=>{const t=$("fTag").value.trim();if(!t)return;s.forEach(i=>{if(!i.tags.includes(t))i.tags.push(t)});save();render();toast(`「${t}」を追加しました`)},
-  ()=>{for(const t of cur){const c=document.createElement("span");c.className="tag";c.textContent="# "+t;const x=document.createElement("button");x.type="button";x.textContent="✕";x.setAttribute("aria-label","タグを外す");
+  formDlg(L("タグ"),`<input id="fTag" list="tagList" placeholder="${L("タグ名")}"><datalist id="tagList">${TAGS.map(t=>`<option value="${esc(t)}">`).join("")}</datalist><div class="tags" id="fCur"></div>`,L("追加"),()=>{const t=$("fTag").value.trim();if(!t)return;s.forEach(i=>{if(!i.tags.includes(t))i.tags.push(t)});save();render();toast(L("「{t}」を追加しました",{t}))},
+  ()=>{for(const t of cur){const c=document.createElement("span");c.className="tag";c.textContent="# "+t;const x=document.createElement("button");x.type="button";x.textContent="✕";x.setAttribute("aria-label",L("タグを外す"));
     x.onclick=()=>{s.forEach(i=>i.tags=i.tags.filter(z=>z!==t));c.remove();save();render()};c.append(x);$("fCur").append(c)}})};
-$("bMove").onclick=()=>formDlg("移動",`<select id="fFolder">${folderOpts()}</select>`,"移動",()=>{const f=$("fFolder").value;const s=selItems();s.forEach(i=>i.folder=f);st.sel.clear();save();render();toast(`${s.length} 件を ${f} へ移動しました`)});
-$("addBtn").onclick=()=>formDlg("追加",`<select id="fKind"><option value="file">ファイル（画像・動画・テキスト）</option><option value="url">URL</option>${EAGLE?`<option value="eagle">Eagleライブラリ（.library フォルダ）</option>`:""}</select><input id="fUrl" type="url" placeholder="https://" hidden><select id="fFolder">${folderOpts(st.folder)}</select>`,"追加",()=>{
+$("bMove").onclick=()=>formDlg(L("移動"),`<select id="fFolder">${folderOpts()}</select>`,L("移動"),()=>{const f=$("fFolder").value;const s=selItems();s.forEach(i=>i.folder=f);st.sel.clear();save();render();toast(L("{n} 件を {f} へ移動しました",{n:s.length,f}))});
+$("addBtn").onclick=()=>formDlg(L("追加"),`<select id="fKind"><option value="file">${L("ファイル（画像・動画・テキスト）")}</option><option value="url">URL</option>${EAGLE?`<option value="eagle">Eagleライブラリ（.library フォルダ）</option>`:""}</select><input id="fUrl" type="url" placeholder="https://" hidden><select id="fFolder">${folderOpts(st.folder)}</select>`,L("追加"),()=>{
   const f=$("fFolder").value;
   if($("fKind").value==="file"){pendingFolder=f;$("file").click();return}
   if($("fKind").value==="eagle"){if(dbxMode)importEagleDropbox();else $("eagleDir").click();return}
-  const u=$("fUrl").value.trim();if(!/^https?:\/\//.test(u))return toast("URLを入力してください");
+  const u=$("fUrl").value.trim();if(!/^https?:\/\//.test(u))return toast(L("URLを入力してください"));
   const key=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-  items.unshift({id:(dbxMode?"url:":"id:url")+key,key,name:new URL(u).hostname,folder:f,kind:"url",url:u,tags:[],favorite:false,addedAt:Date.now(),trashed:false,extra:!dbxMode,dbx:dbxMode});save();render();toast("URLを追加しました");
+  items.unshift({id:(dbxMode?"url:":"id:url")+key,key,name:new URL(u).hostname,folder:f,kind:"url",url:u,tags:[],favorite:false,addedAt:Date.now(),trashed:false,extra:!dbxMode,dbx:dbxMode});save();render();toast(L("URLを追加しました"));
 },()=>{$("fKind").onchange=e=>{$("fUrl").hidden=e.target.value!=="url";$("fFolder").hidden=e.target.value==="eagle"}});
 let pendingFolder=null;
 const pref=(k,v)=>{try{if(v===undefined)return localStorage.getItem("tehon-"+k);localStorage.setItem("tehon-"+k,v)}catch(e){return null}};
@@ -498,8 +501,8 @@ darkQ.addEventListener("change",()=>setTheme(pref("theme")));
 const DEFAULT_SW=["#E8EFEA","#3772FF","#DF2935","#FDCA40","#2FA866","#A065E0","#F8902F","#34C3DB"];
 function tile(attr,v,name,sw){
   return`<button type="button" class="tile" data-${attr}="${esc(v)}" aria-pressed="false"><span class="sw">${sw.map(c=>`<i style="background:${c}"></i>`).join("")}</span><span class="tn">${esc(name)}</span></button>`}
-const themeTiles=()=>allThemes().map(x=>tile("theme",x.id,x.name,x.id==="default"?DEFAULT_SW:x.p.length?x.p:[...new Set(x.l)])).join("");
-const VBGS=[["theme","テーマ",["var(--bg)","var(--surface)"]],["blur","ぼかし",["var(--bg)","transparent"]],["dark","暗く",["var(--dk-bg)"]]];
+const themeTiles=()=>allThemes().map(x=>tile("theme",x.id,x.id==="default"?L(x.name):x.name,x.id==="default"?DEFAULT_SW:x.p.length?x.p:[...new Set(x.l)])).join("");
+const VBGS=[["theme",L("テーマ"),["var(--bg)","var(--surface)"]],["blur",L("ぼかし"),["var(--bg)","transparent"]],["dark",L("暗く"),["var(--dk-bg)"]]];
 const vbg=()=>({light:"theme"}[pref("vbg")]||pref("vbg")||"theme");
 function seg(id,opts,cur){return`<div class="segc" id="${id}" role="group">${opts.map(([v,l])=>`<button type="button" data-v="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>`}
 function syncSettings(){
@@ -512,9 +515,9 @@ function importTheme(file){file.text().then(txt=>{
   for(const x of list){const l=THEME_KEYS.map(k=>x.light?.app?.[k]),d=THEME_KEYS.map(k=>x.dark?.app?.[k]);
     if(![...l,...d].every(v=>hex.test(v||"")))continue;
     const th={id:"x:"+x.id,name:x.name||x.id,p:(x.palette||[]).filter(v=>hex.test(v)),l,d};const i=cu.findIndex(y=>y.id===th.id);if(i<0)cu.push(th);else cu[i]=th;last=th.id}
-  if(!last)return toast("テーマのファイルではありません");
-  pref("themes-custom",JSON.stringify(cu));if($("fThemes"))$("fThemes").innerHTML=themeTiles();setTheme(last);toast("テーマを読み込みました");
-}).catch(()=>toast("テーマのファイルではありません"))}
+  if(!last)return toast(L("テーマのファイルではありません"));
+  pref("themes-custom",JSON.stringify(cu));if($("fThemes"))$("fThemes").innerHTML=themeTiles();setTheme(last);toast(L("テーマを読み込みました"));
+}).catch(()=>toast(L("テーマのファイルではありません")))}
 function setVBg(b){["blur","dark"].forEach(x=>$("viewer").classList.toggle("bg-"+x,x===b));document.querySelectorAll(".swatch").forEach(w=>w.classList.toggle("on",w.dataset.bg===b));pref("vbg",b);syncSettings()}
 document.querySelectorAll(".swatch").forEach(w=>w.onclick=()=>setVBg(w.dataset.bg));
 const setNames=v=>{pref("names",v);document.body.classList.toggle("no-names",v==="off");syncSettings()};
@@ -526,17 +529,19 @@ addEventListener("beforeinstallprompt",e=>{e.preventDefault();installEv=e});
 addEventListener("appinstalled",()=>{installEv=null});
 const standalone=()=>matchMedia("(display-mode:standalone)").matches||navigator.standalone===true;
 const isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1;
-const homeSec=()=>standalone()?"":installEv&&/Android/.test(navigator.userAgent)?`${H("ホーム画面に追加")}<button type="button" class="btn" id="fInstall">インストール</button>`
-  :isIOS?`${H("ホーム画面に追加")}<div>共有メニュー →「ホーム画面に追加」</div>`:"";
+const homeSec=()=>standalone()?"":installEv&&/Android/.test(navigator.userAgent)?`${H(L("ホーム画面に追加"))}<button type="button" class="btn" id="fInstall">${L("インストール")}</button>`
+  :isIOS?`${H(L("ホーム画面に追加"))}<div>${L("共有メニュー →「ホーム画面に追加」")}</div>`:"";
 $("setBtn").onclick=()=>{closeNav();
-  formDlg("設定",`${H("カラーテーマ")}${seg("fTone",[["auto","自動"],["light","ライト"],["dark","ダーク"]],pref("tone")||"auto")}<div class="tiles" id="fThemes">${themeTiles()}</div><button type="button" class="btn" id="fThemeFile">テーマを読み込む（.json）</button>
-  ${H("ビューアの背景")}<div class="tiles" id="fVbgs">${VBGS.map(([v,l,sw])=>tile("vbg",v,l,sw)).join("")}</div>
-  ${H("ファイル名")}${seg("fNames",[["on","表示"],["off","非表示"]],pref("names")||"on")}
-  ${dbx.isConfigured()?`${H("Dropbox")}<button type="button" class="btn" id="fDbx">${dbxMode?"切断":"接続"}</button>`:""}${homeSec()}<button type="button" class="btn" id="fKeys">キーボードショートカット</button>`,"閉じる",()=>{},
+  formDlg(L("設定"),`${H(L("カラーテーマ"))}${seg("fTone",[["auto",L("自動")],["light",L("ライト")],["dark",L("ダーク")]],pref("tone")||"auto")}<div class="tiles" id="fThemes">${themeTiles()}</div><button type="button" class="btn" id="fThemeFile">${L("テーマを読み込む（.json）")}</button>
+  ${H(L("ビューアの背景"))}<div class="tiles" id="fVbgs">${VBGS.map(([v,l,sw])=>tile("vbg",v,l,sw)).join("")}</div>
+  ${H(L("ファイル名"))}${seg("fNames",[["on",L("表示")],["off",L("非表示")]],pref("names")||"on")}
+  ${H(L("言語"))}${seg("fLang",[["auto",L("自動")],["ja","日本語"],["en","English"]],langPref())}
+  ${dbx.isConfigured()?`${H("Dropbox")}<button type="button" class="btn" id="fDbx">${dbxMode?L("切断"):L("接続")}</button>`:""}${homeSec()}<button type="button" class="btn" id="fKeys">${L("キーボードショートカット")}</button>`,L("閉じる"),()=>{},
   ()=>{$("dlgForm").classList.add("set");syncSettings();$("dCancel").hidden=true;
     $("fThemes").onclick=e=>{const b=e.target.closest(".tile");if(b)setTheme(b.dataset.theme)};
     $("fVbgs").onclick=e=>{const b=e.target.closest(".tile");if(b)setVBg(b.dataset.vbg)};
     $("fNames").onclick=e=>{const b=e.target.closest("button");if(b)setNames(b.dataset.v)};
+    $("fLang").onclick=e=>{const b=e.target.closest("button");if(!b)return;setLangPref(b.dataset.v);b.parentNode.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b));Promise.resolve(flushSave()).finally(()=>location.reload())};
     $("fTone").onclick=e=>{const b=e.target.closest("button");if(b){pref("tone",b.dataset.v);setTheme(pref("theme"))}};
     $("fThemeFile").onclick=()=>{const i=document.createElement("input");i.type="file";i.accept=".json,application/json";i.onchange=()=>i.files[0]&&importTheme(i.files[0]);i.click()};
     if($("fInstall"))$("fInstall").onclick=async()=>{const e=installEv;if(!e)return;e.prompt();if((await e.userChoice).outcome==="accepted"){installEv=null;$("fInstall").previousElementSibling.remove();$("fInstall").remove()}};
@@ -583,7 +588,7 @@ async function readText(it){
   return it.text;
 }
 async function importEagleDropbox(){
-  flushSave();$("sync").lastChild.textContent="読み込み中";
+  flushSave();$("sync").lastChild.textContent=L("読み込み中");
   try{
     const r=await eagle.importAll(own,m=>toast(`読み込み中 ${m}`));
     if(!r.libs.length){$("sync").lastChild.textContent="Dropbox";return toast(`${eagle.EAGLE_DIR} にEagleライブラリがありません`)}
@@ -627,10 +632,10 @@ $("file").onchange=e=>{addFiles([...e.target.files],pendingFolder);e.target.valu
 async function uploadFiles(files,folder){
   folder=folder??st.folder??"";let n=0,bad=0;
   for(const f of files){
-    toast(`アップロード中 ${n+bad+1} / ${files.length}`);
+    toast(L("アップロード中 {i} / {n}",{i:n+bad+1,n:files.length}));
     try{const e=await dbx.upload(folder,f);const it=dbxItem(e,null);it.addedAt=Date.now();items.unshift(it);snap.set(it.id,JSON.stringify(metaOf(it)));n++}catch(e){bad++}
   }
-  render();toast(`${n} 件を追加しました${bad?`（${bad} 件はアップロードできませんでした）`:""}`);
+  render();toast(L("{n} 件を追加しました",{n})+(bad?L("（{n} 件はアップロードできませんでした）",{n:bad}):""));
 }
 function addFiles(files,folder){
   if(dbxMode)return uploadFiles(files,folder);
@@ -639,7 +644,7 @@ function addFiles(files,folder){
     const kind=f.type.startsWith("video/")?"video":f.type==="image/gif"?"gif":f.type.startsWith("image/")?"image":(f.type.startsWith("text/")||/\.(txt|md)$/i.test(f.name))?"text":null;if(!kind)continue;
     items.unshift({id:"id:local"+Date.now()+n,name:f.name,folder,kind,tags:[],favorite:false,addedAt:Date.now(),trashed:false,blobUrl:kind==="text"?null:URL.createObjectURL(f),file:f,local:true});n++;
   }
-  render();toast(n?`${n} 件を追加しました（このデモでは再読み込みで消えます）`:"画像・動画・テキストファイルを選んでください");
+  render();toast(n?L("{n} 件を追加しました",{n})+L("（このデモでは再読み込みで消えます）"):L("画像・動画・テキストファイルを選んでください"));
 }
 let dc=0;
 addEventListener("dragenter",e=>{if(e.dataTransfer?.types.includes("Files")){dc++;$("drop").hidden=false}});
@@ -655,12 +660,12 @@ $("scrim").onclick=closeNav;
 
 /* dialogs */
 function formDlg(title,html,ok,fn,init){
-  const f=$("dlgForm");f.className="";f.innerHTML=`<div class="dh"><h4></h4><button type="button" class="x" id="dX" aria-label="閉じる">✕</button></div>${html}<div class="row"><button type="button" class="btn" id="dCancel">キャンセル</button><button class="btn pri">${ok}</button></div>`;
+  const f=$("dlgForm");f.className="";f.innerHTML=`<div class="dh"><h4></h4><button type="button" class="x" id="dX" aria-label="${L("閉じる")}">✕</button></div>${html}<div class="row"><button type="button" class="btn" id="dCancel">${L("キャンセル")}</button><button class="btn pri">${ok}</button></div>`;
   f.querySelector("h4").textContent=title;$("dlg").hidden=false;init&&init();f.querySelector("input:not([hidden]),select")?.focus();
   $("dCancel").onclick=$("dX").onclick=()=>{$("dlg").hidden=true;dropImp()};
   f.onsubmit=e=>{e.preventDefault();$("dlg").hidden=true;fn();dropImp()};
 }
-function confirmDlg(title,msg,fn){formDlg(title,`<div class="msg" style="color:var(--muted);font-size:13px"></div>`,"削除",fn);$("dlgForm").querySelector(".msg").textContent=msg}
+function confirmDlg(title,msg,fn){formDlg(title,`<div class="msg" style="color:var(--muted);font-size:13px"></div>`,L("削除"),fn);$("dlgForm").querySelector(".msg").textContent=msg}
 $("dlg").addEventListener("keydown",e=>{if(e.key==="Escape"){$("dlg").hidden=true;dropImp()}});
 let tt;function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,2400)}
 
@@ -695,7 +700,7 @@ const toVc=c=>{vc.width=c.width;vc.height=c.height;vx.drawImage(c,0,0);useEl(vc,
 async function showPage(n){const d=V.doc;if(!d||n<1||n>d.n)return;d.p=n;$("vPgN").textContent=n+" / "+d.n;
   const c=await fmt.pdfPage(d.doc,n,3000).catch(()=>null);if(V.doc===d&&d.p===n&&c)toVc(c)}
 async function openFmt(it,ph){
-  const live=()=>list[V.i]===it&&!$("viewer").hidden,ext=extOf(it.name);ph();$("vState").textContent="読み込み中";
+  const live=()=>list[V.i]===it&&!$("viewer").hidden,ext=extOf(it.name);ph();$("vState").textContent=L("読み込み中");
   try{
     const src=await source(it);if(!live())return;
     if(it.fmt==="model"){const c=v3.cloneNode();v3.replaceWith(c);v3=c;useEl(v3);const end=await fmt.modelViewer(v3,src,ext);if(live()&&!fmtEnd)fmtEnd=end;else end()}
@@ -713,7 +718,7 @@ async function openFmt(it,ph){
       V.doc={doc,n:doc.numPages,p:1};fmtEnd=()=>doc.close();$("vPage").hidden=V.doc.n<2;await showPage(1)}
     else{const c=await fmt.picture(src,it.fmt,ext,it.name,4096,false);if(!live())return;if(!c)throw 0;toVc(c)}
     $("vState").textContent="";
-  }catch(e){if(live()){$("vState").textContent="";toast("プレビューできない形式です")}}
+  }catch(e){if(live()){$("vState").textContent="";toast(L("プレビューできない形式です"))}}
 }
 $("vPgUp").onclick=()=>V.doc&&showPage(V.doc.p-1);$("vPgDn").onclick=()=>V.doc&&showPage(V.doc.p+1);
 function closeViewer(){settle(true);endFmt();V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");vf.removeAttribute("src");renderGrid();cardAt(V.i)?.focus()}
@@ -724,8 +729,8 @@ function loadV(){
   renderFoot(it);$("vState").textContent="";$("vReload").hidden=true;
   if(it.conflict){it.conflict=false;it.text=null;it.textP=null}
   if(it.kind==="text"){useEl(vt);vt.value="";readText(it).then(t=>{if(list[V.i]!==it)return;vt.value=t;vt.readOnly=!!it.readonly;
-      $("vState").textContent=it.readonly?(it.enc==="Shift_JIS"&&it.dbx?"Shift_JIS・閲覧のみ":"2MBを超えるため閲覧のみ"):it.enc==="Shift_JIS"?"Shift_JIS":"";$("vReload").hidden=true});
-    vt.oninput=()=>{if(it.conflict)return;clearTimeout(vtTimer);$("vState").textContent="編集中";vtTimer=setTimeout(()=>saveText(it,vt.value),600)};return}
+      $("vState").textContent=it.readonly?(it.enc==="Shift_JIS"&&it.dbx?L("Shift_JIS・閲覧のみ"):L("2MBを超えるため閲覧のみ")):it.enc==="Shift_JIS"?"Shift_JIS":"";$("vReload").hidden=true});
+    vt.oninput=()=>{if(it.conflict)return;clearTimeout(vtTimer);$("vState").textContent=L("編集中");vtTimer=setTimeout(()=>saveText(it,vt.value),600)};return}
   const em=it.kind==="url"&&embedOf(it.url);
   if(em){vf.src=em.src;useEl(vf,em.w,em.h);return}
   vf.removeAttribute("src");
@@ -733,10 +738,10 @@ function loadV(){
   if(it.kind==="url"){vc.width=800;vc.height=450;vx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue("--accent");vx.fillRect(0,0,800,450);vx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue("--on-accent");vx.font="500 28px sans-serif";vx.fillText(it.name,40,200);vx.font="20px monospace";vx.fillText(it.url,40,250);useEl(vc,800,450);return}
   if(it.dbx){
     const show=src=>{if(list[V.i]!==it||$("viewer").hidden)return;
-      if(it.kind==="video"){V.video=vv;vv.onloadeddata=null;vv.onloadedmetadata=()=>{useEl(vv,vv.videoWidth,vv.videoHeight);vv.play()};vv.onerror=()=>toast("この動画形式はブラウザで再生できません");vv.src=src}
-      else{vi.onload=()=>useEl(vi,vi.naturalWidth,vi.naturalHeight);vi.onerror=()=>toast("プレビューできない形式です");vi.src=src}};
+      if(it.kind==="video"){V.video=vv;vv.onloadeddata=null;vv.onloadedmetadata=()=>{useEl(vv,vv.videoWidth,vv.videoHeight);vv.play()};vv.onerror=()=>toast(L("この動画形式はブラウザで再生できません"));vv.src=src}
+      else{vi.onload=()=>useEl(vi,vi.naturalWidth,vi.naturalHeight);vi.onerror=()=>toast(L("プレビューできない形式です"));vi.src=src}};
     [vc,vi,vv].forEach(x=>x.hidden=true);V.el=null;
-    if(!it.viewable){const t=thumbCache.get(it.id);if(t&&t!==BLANK){show(t);toast("サムネイルを表示しています")}else toast("プレビューできない形式です");return}
+    if(!it.viewable){const t=thumbCache.get(it.id);if(t&&t!==BLANK){show(t);toast(L("サムネイルを表示しています"))}else toast(L("プレビューできない形式です"));return}
     // The thumbnail stands in at the final size until the full image or the video's first frame is ready.
     const t=thumbCache.get(it.id),ph=()=>{if(!t||t===BLANK)return;vi.onload=()=>{if(vi.src!==t||V.el===vv)return;const w=vi.naturalWidth,h=vi.naturalHeight,r=$("stage").getBoundingClientRect();
         const k=it.w&&it.h?it.w/w:w<480&&h<320?1:Math.max(r.width/w,r.height/h);useEl(vi,w*k,it.w&&it.h?it.h:h*k);vi.dataset.ph="1"};vi.onerror=null;vi.src=t};
@@ -744,12 +749,12 @@ function loadV(){
     if(it.kind==="video"){
       const pre=vidPool.get(it.id);vidPool.delete(it.id);
       if(pre){pre.id="vv";pre.hidden=true;vv.replaceWith(pre);vv.removeAttribute("src");vv.load();vv=pre}
-      V.video=vv;vv.onloadedmetadata=null;vv.onerror=()=>toast("この動画形式はブラウザで再生できません");
+      V.video=vv;vv.onloadedmetadata=null;vv.onerror=()=>toast(L("この動画形式はブラウザで再生できません"));
       const ready=()=>{if(list[V.i]!==it||$("viewer").hidden)return;useEl(vv,vv.videoWidth,vv.videoHeight);if(V.play)vv.play().catch(()=>{})};
       if(pre&&pre.readyState>=2){ready();prefetchAround();return}
       ph();vv.onloadeddata=ready;
       if(pre)vv.play().catch(()=>{});
-      else dbxLink(it).then(l=>{if(list[V.i]!==it||$("viewer").hidden)return;vv.src=l;vv.play().catch(()=>{})}).catch(()=>toast("読み込めませんでした"));
+      else dbxLink(it).then(l=>{if(list[V.i]!==it||$("viewer").hidden)return;vv.src=l;vv.play().catch(()=>{})}).catch(()=>toast(L("読み込めませんでした")));
       prefetchAround();return}
     const c=fullCache.get(it.id);
     if(c&&c.im.complete&&c.im.naturalWidth&&Date.now()<it.linkExp){vi.onload=vi.onerror=null;vi.src=c.im.src;useEl(vi,c.im.naturalWidth,c.im.naturalHeight);prefetchAround();return}
@@ -757,32 +762,32 @@ function loadV(){
     full(it).then(src=>{if(list[V.i]!==it||$("viewer").hidden)return;
       vi.onload=()=>{const w=vi.naturalWidth,h=vi.naturalHeight;
         if(vi.dataset.ph&&V.el===vi&&Math.abs(V.z-V.fit)>.001){V.z*=V.w/w;V.w=w;V.h=h;const r=$("stage").getBoundingClientRect();V.fit=Math.min(r.width/w,r.height/h,1)*.96;applyV()}else useEl(vi,w,h);delete vi.dataset.ph};
-      vi.onerror=()=>toast("プレビューできない形式です");vi.src=src}).catch(()=>toast("読み込めませんでした"));
+      vi.onerror=()=>toast(L("プレビューできない形式です"));vi.src=src}).catch(()=>toast(L("読み込めませんでした")));
     prefetchAround();
     return;
   }
   if(it.local){
     const src=it.file&&it.viewable!==false?(it.srcUrl||=URL.createObjectURL(it.file)):it.blobUrl;
-    if(!src){toast("プレビューできない形式です");return}
-    if(it.kind==="video"){V.video=vv;vv.onloadeddata=null;vv.onloadedmetadata=()=>{useEl(vv,vv.videoWidth,vv.videoHeight);vv.play()};vv.onerror=()=>toast("この動画形式はブラウザで再生できません");vv.src=src;return}
-    vi.onload=()=>useEl(vi,vi.naturalWidth,vi.naturalHeight);vi.onerror=()=>toast("プレビューできない形式です");vi.src=src;
-    if(it.viewable===false&&it.blobUrl)toast("サムネイルを表示しています");return;
+    if(!src){toast(L("プレビューできない形式です"));return}
+    if(it.kind==="video"){V.video=vv;vv.onloadeddata=null;vv.onloadedmetadata=()=>{useEl(vv,vv.videoWidth,vv.videoHeight);vv.play()};vv.onerror=()=>toast(L("この動画形式はブラウザで再生できません"));vv.src=src;return}
+    vi.onload=()=>useEl(vi,vi.naturalWidth,vi.naturalHeight);vi.onerror=()=>toast(L("プレビューできない形式です"));vi.src=src;
+    if(it.viewable===false&&it.blobUrl)toast(L("サムネイルを表示しています"));return;
   }
   const W=Math.round(it.w/2),H=Math.round(it.h/2);vc.width=W;vc.height=H;draw(vx,it,W,H);useEl(vc,W,H);
   if(anim){let t0=performance.now(),acc=0;const f=n=>{if(V.play)acc+=(n-t0)/1000;t0=n;draw(vx,it,W,H,acc*(it.kind==="gif"?3:1.2));V.raf=requestAnimationFrame(f)};V.raf=requestAnimationFrame(f)}
 }
 // Dropbox text is written back only if nobody changed it since it was read (rev check); a conflict stops autosave until reloaded.
 async function saveText(it,value){
-  if(!it.dbx){it.text=value;save();renderGrid();$("vState").textContent=it.local||eagleMode?"保存しました（このデモ内のみ）":"保存しました";return}
-  $("vState").textContent="保存中";
-  try{const m=await dbx.writeText(it.path,value,it.rev);it.rev=m.rev;it.size=m.size;it.text=value;renderGrid();if(list[V.i]===it)$("vState").textContent="保存しました"}
-  catch(e){if(list[V.i]!==it)return;if(e instanceof dbx.ConflictError){it.conflict=true;$("vState").textContent="他の端末で更新されたため保存していません";$("vReload").hidden=false}else $("vState").textContent="保存できませんでした"}
+  if(!it.dbx){it.text=value;save();renderGrid();$("vState").textContent=it.local||eagleMode?L("保存しました（このデモ内のみ）"):L("保存しました");return}
+  $("vState").textContent=L("保存中");
+  try{const m=await dbx.writeText(it.path,value,it.rev);it.rev=m.rev;it.size=m.size;it.text=value;renderGrid();if(list[V.i]===it)$("vState").textContent=L("保存しました")}
+  catch(e){if(list[V.i]!==it)return;if(e instanceof dbx.ConflictError){it.conflict=true;$("vState").textContent=L("他の端末で更新されたため保存していません");$("vReload").hidden=false}else $("vState").textContent=L("保存できませんでした")}
 }
 $("vReload").onclick=()=>{const it=list[V.i];it.conflict=false;it.text=null;it.textP=null;loadV()};
 function renderFoot(it){
   const f=$("vfoot");f.replaceChildren();
-  for(const t of it.tags){const s=document.createElement("span");s.className="tag";s.textContent="# "+t;const x=document.createElement("button");x.textContent="✕";x.setAttribute("aria-label","タグを外す");x.onclick=()=>{it.tags=it.tags.filter(z=>z!==t);save();renderFoot(it);renderSide()};s.append(x);f.append(s)}
-  const inp=document.createElement("input");inp.placeholder="＋ タグ";inp.id="vTagInput";inp.setAttribute("list","vTags");
+  for(const t of it.tags){const s=document.createElement("span");s.className="tag";s.textContent="# "+t;const x=document.createElement("button");x.textContent="✕";x.setAttribute("aria-label",L("タグを外す"));x.onclick=()=>{it.tags=it.tags.filter(z=>z!==t);save();renderFoot(it);renderSide()};s.append(x);f.append(s)}
+  const inp=document.createElement("input");inp.placeholder=L("＋ タグ");inp.id="vTagInput";inp.setAttribute("list","vTags");
   const dl=document.createElement("datalist");dl.id="vTags";dl.innerHTML=TAGS.map(t=>`<option value="${t}">`).join("");
   inp.onkeydown=e=>{e.stopPropagation();if(e.key==="Enter"&&inp.value.trim()){const t=inp.value.trim();if(!it.tags.includes(t))it.tags.push(t);save();renderFoot(it);renderSide();$("vTagInput").focus()}if(e.key==="Escape")inp.blur()};
   const p=document.createElement("span");p.className="path";p.textContent=`/${it.folder}${it.w?` · ${it.w}×${it.h}`:""}`;
@@ -831,7 +836,7 @@ stage.addEventListener("pointerup",up);stage.addEventListener("pointercancel",up
 // Lifting the fingers after a pinch isn't a double tap, so the zoom stays.
 let lastTap=0;stage.addEventListener("pointerup",e=>{if(selfInput(e.target))return;const n=Date.now();if(swiped){swiped=false;lastTap=0;return}if(multi){if(!pts.size)multi=false;lastTap=0;return}
   if(V.audio&&e.target===vc&&V.audio.duration){const r=vc.getBoundingClientRect();V.audio.currentTime=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*V.audio.duration;lastTap=0;return}if(n-lastTap<300){const [x,y]=rel(e);Math.abs(V.z-V.fit)<.001?zoomAt(2.5/V.z*V.fit>1?2.5:1/V.z,x,y):fitV()}lastTap=n});
-function vTrash(){const it=list[V.i];if(!it||it.trashed)return;it.trashed=true;save();renderSide();list.splice(V.i,1);toast("ゴミ箱へ移動しました");if(!list.length)return closeViewer();V.i=Math.min(V.i,list.length-1);loadV()}
+function vTrash(){const it=list[V.i];if(!it||it.trashed)return;it.trashed=true;save();renderSide();list.splice(V.i,1);toast(L("ゴミ箱へ移動しました"));if(!list.length)return closeViewer();V.i=Math.min(V.i,list.length-1);loadV()}
 document.addEventListener("keydown",e=>{if($("viewer").hidden||e.target.id==="vTagInput")return;if(e.altKey||((e.metaKey||e.ctrlKey)&&e.target!==vt))return;if(e.target===vt){if(e.key==="Escape")vt.blur();if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();vt.oninput()}return}
   ({Escape:closeViewer,ArrowLeft:()=>$("vPrev").click(),ArrowRight:()=>$("vNext").click(),"+":()=>zoomAt(1.25),"=":()=>zoomAt(1.25),"-":()=>zoomAt(.8),"0":fitV,"1":()=>{if(V.el&&V.el!==vf){V.z=1;V.x=0;V.y=0;applyV()}},ArrowUp:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p-1)}},ArrowDown:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p+1)}},PageUp:()=>V.doc&&showPage(V.doc.p-1),PageDown:()=>V.doc&&showPage(V.doc.p+1),Delete:vTrash,Backspace:vTrash,f:()=>$("vFav").click()," ":()=>$("vPlay").click(),t:()=>{e.preventDefault();$("vTagInput").focus()}}[e.key]||(()=>{}))()});
 addEventListener("resize",()=>{if(!$("viewer").hidden)fitV()});
@@ -843,7 +848,7 @@ const cached=conn&&loadCache();dbxPending=conn&&!cached;
 let painted=false;
 if(cached){$("sync").lastChild.textContent="Dropbox";await preloadSaved()}
 render();painted=true;
-if(authErr)toast(authErr);
+if(authErr)toast(L(authErr));
 if(conn)loadDropbox(cached);
 // Thumbnails and card text already on this device, read in one go before the first render so the list opens filled in.
 // Waits at most 500 ms; anything not read by then loads as usual, and the list itself never waits on it.
