@@ -204,7 +204,7 @@ async function loadDropbox(keep=false){
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
 const folderOpts=sel=>(dbxMode?["",...FOLDERS]:FOLDERS).map(f=>`<option value="${esc(f)}"${f===sel?" selected":""}>${f?esc(f):"/"}</option>`).join("");
 /* state */
-const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,tag:null,q:"",sort:"added-desc",sel:new Set(),selecting:false,anchor:null};
+const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,tag:null,q:"",sort:"added-desc",type:"",sel:new Set(),selecting:false,anchor:null};
 let list=[];
 function filtered(){
   const q=st.q.trim().toLowerCase();
@@ -213,14 +213,27 @@ function filtered(){
   if(st.view==="url")l=l.filter(it=>it.kind==="url");
   if(st.folder)l=l.filter(it=>it.folder===st.folder||it.folder.startsWith(st.folder+"/"));
   if(st.tag)l=l.filter(it=>it.tags.includes(st.tag));
+  if(st.type)l=l.filter(it=>typeOf(it)===st.type);
   if(q)l=l.filter(it=>(it.name+" "+it.folder+" "+it.tags.join(" ")+" "+(it.url||"")).toLowerCase().includes(q));
   if(st.sort==="random"){const r=x=>{let h=st.rseed;for(const c of x.id)h=Math.imul(h^c.charCodeAt(0),2654435761);return h>>>0};return l.sort((x,y)=>r(x)-r(y))}
   const [k,d]=st.sort.split("-");
   l.sort((x,y)=>k==="name"?x.name.localeCompare(y.name,"ja"):k==="kind"?x.kind.localeCompare(y.kind)||y.addedAt-x.addedAt:(d==="asc"?x.addedAt-y.addedAt:y.addedAt-x.addedAt));
   return l;
 }
+// File type for the type filter: unviewable images (PSD, AI…) are split out by extension.
+const typeOf=it=>it.badge?"x:"+it.badge:it.kind;
+const TYPE_NAMES={image:"画像",gif:"GIF",video:"動画",text:"テキスト",url:"URL"};
+function renderTypes(){
+  const cnt=new Map();items.forEach(i=>{if(!i.trashed){const t=typeOf(i);cnt.set(t,(cnt.get(t)||0)+1)}});
+  if(st.type&&!cnt.has(st.type))cnt.set(st.type,0);
+  const ks=Object.keys(TYPE_NAMES),ord=t=>{const i=ks.indexOf(t);return i<0?ks.length:i};
+  const ts=[...cnt.keys()].sort((a,b)=>ord(a)-ord(b)||a.localeCompare(b));
+  $("type").innerHTML=`<option value="">すべての種類</option>`+ts.map(t=>`<option value="${esc(t)}">${esc(TYPE_NAMES[t]||t.replace(/^x:/,"").toUpperCase())} (${cnt.get(t)})</option>`).join("");
+  $("type").value=st.type;$("typeW").classList.toggle("on",!!st.type);
+}
 function navBtn(label,n,on,fn,cls=""){const b=document.createElement("button");b.className=(on?"on ":"")+cls;b.innerHTML=`<span></span><span class="n">${n}</span>`;b.firstChild.textContent=label;b.onclick=()=>{fn();closeNav()};return b}
 function renderSide(){
+  renderTypes();
   const live=items.filter(i=>!i.trashed);
   const lib=$("lib");lib.replaceChildren(
     navBtn("すべて",live.length,st.view==="all"&&!st.folder&&!st.tag,()=>setView("all")),
@@ -379,6 +392,7 @@ document.addEventListener("keydown",e=>{
 
 /* toolbar */
 $("q").oninput=e=>{st.q=e.target.value;renderGrid()};
+$("type").onchange=e=>{st.type=e.target.value;$("typeW").classList.toggle("on",!!st.type);renderGrid();$("wrap").scrollTop=0};
 $("sort").onchange=e=>{st.sort=e.target.value;if(st.sort==="random")st.rseed=Date.now()|0;$("shuffle").hidden=st.sort!=="random";renderGrid();$("wrap").scrollTop=0};
 $("shuffle").onclick=()=>{st.rseed=(Date.now()^Math.random()*1e9)|0;renderGrid();$("wrap").scrollTop=0};
 function setLayout(l){const ch=st.layout!==l;st.layout=l;$("grid").classList.toggle("fall",l==="fall");if(ch&&list.length)renderGrid();$("lGrid").classList.toggle("on",l==="grid");$("lFall").classList.toggle("on",l==="fall");try{localStorage.setItem("tehon-layout",l)}catch(e){}}
