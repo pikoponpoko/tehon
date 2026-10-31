@@ -45,6 +45,13 @@ aside{background:var(--surface);border-right:1px solid var(--line);overflow-y:au
 .sync{font-size:11px;font-weight:500;color:var(--muted);display:flex;align-items:center;gap:6px}
 .sync i{width:7px;height:7px;border-radius:50%;background:var(--muted)}
 .sec h3{font-size:11px;letter-spacing:.08em;color:var(--muted);margin:0 8px 6px;font-weight:500}
+.sh{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;border-radius:4px}
+.sh:focus-visible{outline:2px solid var(--accent)}
+.sh::after,.tw.has::before{content:"";width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-2px) rotate(45deg);transition:transform .15s}
+.sec.shut .sh::after,.tw.has:not(.open)::before{transform:rotate(-45deg)}
+.sec.shut .nav{display:none}
+.nav .tw{flex:none;display:grid;place-items:center;width:20px;height:20px;margin:-4px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){.sh::after,.tw.has::before{transition:none}}
 .nav{display:flex;flex-direction:column;gap:1px}
 .nav button{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:13px}
 .nav button:hover{background:var(--bg)}

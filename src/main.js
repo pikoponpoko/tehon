@@ -253,6 +253,10 @@ function renderTypes(){
   $("type").innerHTML=`<option value="">すべての種類</option>`+ts.map(t=>`<option value="${esc(t)}">${esc(TYPE_NAMES[t]||t.replace(/^x:/,"").toUpperCase())} (${cnt.get(t)})</option>`).join("");
   $("type").value=st.type;$("typeW").classList.toggle("on",!!st.type);
 }
+// Section and folder open/closed state, kept per device.
+const fold=(()=>{try{const s=JSON.parse(localStorage.getItem("tehon-fold")||"null");if(s)return{sec:s.sec||{},open:new Set(s.open||[])}}catch(e){}return{sec:{},open:new Set()}})();
+const saveFold=()=>{try{localStorage.setItem("tehon-fold",JSON.stringify({sec:fold.sec,open:[...fold.open]}))}catch(e){}};
+document.querySelectorAll(".sh").forEach(b=>{const k=b.dataset.sec,apply=()=>{const c=!!fold.sec[k];b.setAttribute("aria-expanded",!c);b.closest(".sec").classList.toggle("shut",c)};apply();b.onclick=()=>{fold.sec[k]=!fold.sec[k];saveFold();apply()}});
 function navBtn(label,n,on,fn,cls=""){const b=document.createElement("button");b.className=(on?"on ":"")+cls;b.innerHTML=`<span></span><span class="n">${n}</span>`;b.firstChild.textContent=label;b.onclick=()=>{fn();closeNav()};return b}
 function renderSide(){
   renderTypes();
@@ -266,7 +270,14 @@ function renderSide(){
   const all=new Set();FOLDERS.forEach(x=>{const a=x.split("/");a.forEach((_,i)=>all.add(a.slice(0,i+1).join("/")))});
   const cnt=new Map();live.forEach(i=>{const a=i.folder.split("/");a.forEach((_,k)=>{const q=a.slice(0,k+1).join("/");cnt.set(q,(cnt.get(q)||0)+1)})});
   const order=[...all].sort((a,b)=>{const x=a.split("/"),y=b.split("/");for(let i=0;i<Math.min(x.length,y.length);i++){if(x[i]!==y[i]){const ix=FOLDERS.findIndex(z=>z.split("/")[i]===x[i]),iy=FOLDERS.findIndex(z=>z.split("/")[i]===y[i]);return ix-iy||x[i].localeCompare(y[i],"ja")}}return x.length-y.length});
-  for(const q of order){const d=q.split("/").length-1;const b=navBtn(q.split("/").pop(),cnt.get(q)||0,st.folder===q,()=>setFolder(q));b.style.paddingLeft=(8+d*16)+"px";f.append(b)}
+  const kids=new Set(order.filter(q=>q.includes("/")).map(q=>q.slice(0,q.lastIndexOf("/"))));
+  const shown=q=>{const a=q.split("/");for(let i=1;i<a.length;i++)if(!fold.open.has(a.slice(0,i).join("/")))return false;return true};
+  const tw=(q,o)=>{o?fold.open.add(q):fold.open.delete(q);saveFold();renderSide()};
+  for(const q of order){if(!shown(q))continue;const d=q.split("/").length-1;const b=navBtn(q.split("/").pop(),cnt.get(q)||0,st.folder===q,()=>setFolder(q));b.style.paddingLeft=(4+d*14)+"px";
+    const t=document.createElement("span");t.className="tw";
+    if(kids.has(q)){const o=fold.open.has(q);t.classList.add("has");t.classList.toggle("open",o);b.setAttribute("aria-expanded",o);t.onclick=e=>{e.stopPropagation();tw(q,!o)};
+      b.onkeydown=e=>{if(e.key==="ArrowRight"&&!o||e.key==="ArrowLeft"&&o){e.preventDefault();tw(q,!o);$("folders").querySelector(`[data-q="${CSS.escape(q)}"]`)?.focus()}}}
+    b.dataset.q=q;b.prepend(t);f.append(b)}
   const tg=$("tags");tg.replaceChildren();
   const tagAll=[...new Set(live.flatMap(i=>i.tags))].sort((a,b)=>a.localeCompare(b,"ja"));
   for(const t of tagAll){const b=navBtn("# "+t,live.filter(i=>i.tags.includes(t)).length,st.tag===t,()=>setTag(t));b.oncontextmenu=e=>{e.preventDefault();editTag(t)};b.ondblclick=()=>editTag(t);tg.append(b)}
