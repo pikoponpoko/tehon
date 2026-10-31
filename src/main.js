@@ -480,6 +480,7 @@ function setTheme(t){
   const[bg,panel,line,text,muted,accent,danger,lane]=dk?P.d:P.l;
   [bg,panel,line,text,muted,accent,lane,contrast(accent,lane)>=3?accent:text,contrast(text,accent)>contrast(panel,accent)?text:panel,danger,dk?"dark":"light"].forEach((v,i)=>r.style.setProperty(TVARS[i],v));
   [["--dk-bg",P.d[0]],["--dk-surface",P.d[1]],["--dk-fg",P.d[3]]].forEach(([k,v])=>r.style.setProperty(k,v));
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content",panel);
   pref("theme",t);syncSettings()}
 darkQ.addEventListener("change",()=>setTheme(pref("theme")));
 /* swatch tiles like 尺取名人: the palette fills the tile, the name sits on top */
@@ -508,17 +509,26 @@ document.querySelectorAll(".swatch").forEach(w=>w.onclick=()=>setVBg(w.dataset.b
 const setNames=v=>{pref("names",v);document.body.classList.toggle("no-names",v==="off");syncSettings()};
 setTheme(pref("theme"));setVBg(vbg());setNames(pref("names")||"on");
 const H=t=>`<div class="sh">${t}</div>`;
+// Home screen: Android offers an install prompt; iOS has none, so it only gets where to find it.
+let installEv=null;
+addEventListener("beforeinstallprompt",e=>{e.preventDefault();installEv=e});
+addEventListener("appinstalled",()=>{installEv=null});
+const standalone=()=>matchMedia("(display-mode:standalone)").matches||navigator.standalone===true;
+const isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1;
+const homeSec=()=>standalone()?"":installEv&&/Android/.test(navigator.userAgent)?`${H("ホーム画面に追加")}<button type="button" class="btn" id="fInstall">インストール</button>`
+  :isIOS?`${H("ホーム画面に追加")}<div>共有メニュー →「ホーム画面に追加」</div>`:"";
 $("setBtn").onclick=()=>{closeNav();
   formDlg("設定",`${H("カラーテーマ")}${seg("fTone",[["auto","自動"],["light","ライト"],["dark","ダーク"]],pref("tone")||"auto")}<div class="tiles" id="fThemes">${themeTiles()}</div><button type="button" class="btn" id="fThemeFile">テーマを読み込む（.json）</button>
   ${H("ビューアの背景")}<div class="tiles" id="fVbgs">${VBGS.map(([v,l,sw])=>tile("vbg",v,l,sw)).join("")}</div>
   ${H("ファイル名")}${seg("fNames",[["on","表示"],["off","非表示"]],pref("names")||"on")}
-  ${dbx.isConfigured()?`${H("Dropbox")}<button type="button" class="btn" id="fDbx">${dbxMode?"切断":"接続"}</button>`:""}<button type="button" class="btn" id="fKeys">キーボードショートカット</button>`,"閉じる",()=>{},
+  ${dbx.isConfigured()?`${H("Dropbox")}<button type="button" class="btn" id="fDbx">${dbxMode?"切断":"接続"}</button>`:""}${homeSec()}<button type="button" class="btn" id="fKeys">キーボードショートカット</button>`,"閉じる",()=>{},
   ()=>{$("dlgForm").classList.add("set");syncSettings();$("dCancel").hidden=true;
     $("fThemes").onclick=e=>{const b=e.target.closest(".tile");if(b)setTheme(b.dataset.theme)};
     $("fVbgs").onclick=e=>{const b=e.target.closest(".tile");if(b)setVBg(b.dataset.vbg)};
     $("fNames").onclick=e=>{const b=e.target.closest("button");if(b)setNames(b.dataset.v)};
     $("fTone").onclick=e=>{const b=e.target.closest("button");if(b){pref("tone",b.dataset.v);setTheme(pref("theme"))}};
     $("fThemeFile").onclick=()=>{const i=document.createElement("input");i.type="file";i.accept=".json,application/json";i.onchange=()=>i.files[0]&&importTheme(i.files[0]);i.click()};
+    if($("fInstall"))$("fInstall").onclick=async()=>{const e=installEv;if(!e)return;e.prompt();if((await e.userChoice).outcome==="accepted"){installEv=null;$("fInstall").previousElementSibling.remove();$("fInstall").remove()}};
     $("fKeys").onclick=keysDlg;const b=$("fDbx");if(b)b.onclick=async()=>{if(!dbxMode)return dbx.startAuth();flushSave();await dbx.disconnect();try{localStorage.removeItem(CACHE)}catch(e){}location.reload()}})};
 const TEXT=["txt","md","text","csv","json"];
 // Video cards: a still of the video, made on this device the first time it plays in the list and kept in IndexedDB
