@@ -441,6 +441,7 @@ function setTheme(t){
   const r=document.documentElement,P=findTheme(t)||findTheme(t="default"),tone=pref("tone")||"auto",dk=tone==="dark"||tone==="auto"&&darkQ.matches;
   const[bg,panel,line,text,muted,accent,danger,lane]=dk?P.d:P.l;
   [bg,panel,line,text,muted,accent,lane,contrast(accent,lane)>=3?accent:text,contrast(text,accent)>contrast(panel,accent)?text:panel,danger,dk?"dark":"light"].forEach((v,i)=>r.style.setProperty(TVARS[i],v));
+  [["--dk-bg",P.d[0]],["--dk-surface",P.d[1]],["--dk-fg",P.d[3]]].forEach(([k,v])=>r.style.setProperty(k,v));
   pref("theme",t);syncSettings()}
 darkQ.addEventListener("change",()=>setTheme(pref("theme")));
 /* swatch tiles like 尺取名人: the palette fills the tile, the name sits on top */
@@ -448,11 +449,12 @@ const DEFAULT_SW=["#E8EFEA","#3772FF","#DF2935","#FDCA40","#2FA866","#A065E0","#
 function tile(attr,v,name,sw){
   return`<button type="button" class="tile" data-${attr}="${esc(v)}" aria-pressed="false"><span class="sw">${sw.map(c=>`<i style="background:${c}"></i>`).join("")}</span><span class="tn">${esc(name)}</span></button>`}
 const themeTiles=()=>allThemes().map(x=>tile("theme",x.id,x.name,x.id==="default"?DEFAULT_SW:x.p.length?x.p:[...new Set(x.l)])).join("");
-const VBGS=[["dark","黒",["#06080c"]],["blur","透明ぼかし",["#b4b9c3","#78829a"]],["light","ライトグレー",["#e9ecf1"]]];
+const VBGS=[["theme","テーマ",["var(--bg)","var(--surface)"]],["blur","ぼかし",["var(--bg)","transparent"]],["dark","暗く",["var(--dk-bg)"]]];
+const vbg=()=>({light:"theme"}[pref("vbg")]||pref("vbg")||"theme");
 function seg(id,opts,cur){return`<div class="segc" id="${id}" role="group">${opts.map(([v,l])=>`<button type="button" data-v="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>`}
 function syncSettings(){
   document.querySelectorAll("#fThemes .tile").forEach(b=>b.setAttribute("aria-pressed",b.dataset.theme===pref("theme")));
-  document.querySelectorAll("#fVbgs .tile").forEach(b=>b.setAttribute("aria-pressed",b.dataset.vbg===(pref("vbg")||"dark")));
+  document.querySelectorAll("#fVbgs .tile").forEach(b=>b.setAttribute("aria-pressed",b.dataset.vbg===vbg()));
   document.querySelectorAll("#fTone button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===(pref("tone")||"auto")));
   document.querySelectorAll("#fNames button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===(pref("names")||"on")))}
 function importTheme(file){file.text().then(txt=>{
@@ -463,10 +465,10 @@ function importTheme(file){file.text().then(txt=>{
   if(!last)return toast("テーマのファイルではありません");
   pref("themes-custom",JSON.stringify(cu));if($("fThemes"))$("fThemes").innerHTML=themeTiles();setTheme(last);toast("テーマを読み込みました");
 }).catch(()=>toast("テーマのファイルではありません"))}
-function setVBg(b){["dark","blur","light"].forEach(x=>$("viewer").classList.toggle("bg-"+x,x===b&&x!=="dark"));document.querySelectorAll(".swatch").forEach(w=>w.classList.toggle("on",w.dataset.bg===b));pref("vbg",b);syncSettings()}
+function setVBg(b){["blur","dark"].forEach(x=>$("viewer").classList.toggle("bg-"+x,x===b));document.querySelectorAll(".swatch").forEach(w=>w.classList.toggle("on",w.dataset.bg===b));pref("vbg",b);syncSettings()}
 document.querySelectorAll(".swatch").forEach(w=>w.onclick=()=>setVBg(w.dataset.bg));
 const setNames=v=>{pref("names",v);document.body.classList.toggle("no-names",v==="off");syncSettings()};
-setTheme(pref("theme"));setVBg(pref("vbg")||"dark");setNames(pref("names")||"on");
+setTheme(pref("theme"));setVBg(vbg());setNames(pref("names")||"on");
 const H=t=>`<div class="sh">${t}</div>`;
 $("setBtn").onclick=()=>{closeNav();
   formDlg("設定",`${H("カラーテーマ")}${seg("fTone",[["auto","自動"],["light","ライト"],["dark","ダーク"]],pref("tone")||"auto")}<div class="tiles" id="fThemes">${themeTiles()}</div><button type="button" class="btn" id="fThemeFile">テーマを読み込む（.json）</button>
