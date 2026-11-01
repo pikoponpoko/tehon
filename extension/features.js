@@ -1,2 +1,2 @@
-// Recording streamed videos (Instagram etc.). The Chrome Web Store build turns it off (scripts/extension-store.sh).
+// Recording streamed videos (Instagram etc.). NO_RECORD=1 npm run extension:store turns it off.
 export const RECORD = true;

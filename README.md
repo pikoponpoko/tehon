@@ -83,4 +83,4 @@ cd desktop && npm install && npm start
 
 ### ストア版（Chrome ウェブストア・Edge アドオン）
 
-`npm run extension:store` で `dist-extension/tehon-store.zip` を作ります。`manifest.json` の `key` を外し（ID はストアが決める）、動画の録画（`extension/features.js` の `RECORD`）を切ります。公開後、ストアの ID の `https://<ID>.chromiumapp.org/` を Dropbox の Redirect URIs に追加します。プライバシーポリシーは `public/privacy.html`（`/privacy.html`）。
+`npm run extension:store` で `dist-extension/tehon-store.zip` を作ります。`manifest.json` の `key` を外します（ID はストアが決める）。審査で求められた場合は `NO_RECORD=1 npm run extension:store` で動画の録画（`extension/features.js` の `RECORD`）を切ったものを作れます。公開後、ストアの ID の `https://<ID>.chromiumapp.org/` を Dropbox の Redirect URIs に追加します。プライバシーポリシーは `public/privacy.html`（`/privacy.html`）。
