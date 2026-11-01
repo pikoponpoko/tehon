@@ -889,8 +889,17 @@ stage.addEventListener("pointerup",up);stage.addEventListener("pointercancel",up
 // Lifting the fingers after a pinch isn't a double tap, so the zoom stays.
 let lastTap=0;stage.addEventListener("pointerup",e=>{if(selfInput(e.target))return;const n=Date.now();if(swiped){swiped=false;lastTap=0;return}if(multi){if(!pts.size)multi=false;lastTap=0;return}
   if(V.audio&&e.target===vc&&V.audio.duration){const r=vc.getBoundingClientRect();V.audio.currentTime=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*V.audio.duration;lastTap=0;return}if(n-lastTap<300){const [x,y]=rel(e);Math.abs(V.z-V.fit)<.001?zoomAt(2.5/V.z*V.fit>1?2.5:1/V.z,x,y):fitV()}lastTap=n});
+// Text: the wheel pages like other items unless it scrolls the text; a sideways trackpad swipe or a sideways finger swipe always pages.
+vt.addEventListener("wheel",e=>{if(e.ctrlKey||e.metaKey||pref("wheel")==="zoom")return;const side=Math.abs(e.deltaX)>Math.abs(e.deltaY);
+  if(!side&&vt.scrollHeight>vt.clientHeight+1)return;e.preventDefault();const d=side?e.deltaX:e.deltaY,px=e.deltaMode?d*40:d,n=performance.now();
+  if(e.deltaMode||Math.abs(px)>=100){if(n>=wNext){wNext=n+120;go(Math.sign(px))}return}
+  clearTimeout(wQuiet);wQuiet=setTimeout(()=>{wGest=false;wAcc=0},150);
+  if(wGest)return;wAcc+=px;if(Math.abs(wAcc)>=40){wGest=true;go(Math.sign(wAcc));wAcc=0}},{passive:false});
+let vtSw=null;vt.addEventListener("touchstart",e=>{vtSw=e.touches.length===1?{x:e.touches[0].clientX,y:e.touches[0].clientY,t:performance.now()}:null},{passive:true});
+vt.addEventListener("touchend",e=>{const s=vtSw;vtSw=null;if(!s||e.touches.length)return;const t=e.changedTouches[0],dx=t.clientX-s.x,dy=t.clientY-s.y;
+  if(Math.abs(dx)>Math.max(50,Math.abs(dy)*1.5)&&performance.now()-s.t<800&&vt.selectionEnd===vt.selectionStart){vt.blur();go(dx<0?1:-1)}},{passive:true});
 function vTrash(){const it=list[V.i];if(!it||it.trashed)return;it.trashed=true;save();renderSide();list.splice(V.i,1);toast(L("ゴミ箱へ移動しました"));if(!list.length)return closeViewer();V.i=Math.min(V.i,list.length-1);loadV()}
-document.addEventListener("keydown",e=>{if($("viewer").hidden||e.target.id==="vTagInput")return;if(e.altKey||((e.metaKey||e.ctrlKey)&&e.target!==vt))return;if(e.target===vt){if(e.key==="Escape")vt.blur();if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();vt.oninput()}return}
+document.addEventListener("keydown",e=>{if($("viewer").hidden||e.target.id==="vTagInput")return;if(e.altKey||((e.metaKey||e.ctrlKey)&&e.target!==vt))return;if(e.target===vt){if(e.key==="Escape")vt.blur();const c=vt.selectionStart;if(!e.shiftKey&&!e.metaKey&&!e.ctrlKey&&c===vt.selectionEnd&&(e.key==="ArrowLeft"&&c===0||e.key==="ArrowRight"&&c===vt.value.length)){e.preventDefault();vt.blur();go(e.key==="ArrowRight"?1:-1);return}if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();vt.oninput()}return}
   ({Escape:closeViewer,ArrowLeft:()=>$("vPrev").click(),ArrowRight:()=>$("vNext").click(),"+":()=>zoomAt(1.25),"=":()=>zoomAt(1.25),"-":()=>zoomAt(.8),"0":fitV,"1":()=>{if(V.el&&V.el!==vf){V.z=1;V.x=0;V.y=0;applyV()}},ArrowUp:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p-1)}},ArrowDown:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p+1)}},PageUp:()=>V.doc&&showPage(V.doc.p-1),PageDown:()=>V.doc&&showPage(V.doc.p+1),Delete:vTrash,Backspace:vTrash,f:()=>$("vFav").click()," ":()=>$("vPlay").click(),t:()=>{e.preventDefault();$("vTagInput").focus()}}[e.key]||(()=>{}))()});
 addEventListener("resize",()=>{if(!$("viewer").hidden)fitV()});
 
