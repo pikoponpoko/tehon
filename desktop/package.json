@@ -1,0 +1,47 @@
+{
+  "name": "tehon-desktop",
+  "productName": "Tehon",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tehon",
+  "author": "pikoponpoko",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "npm run copy && electron .",
+    "copy": "node copy-web.cjs",
+    "dist": "npm run copy && electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.1.0",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "com.pikoponpoko.tehon",
+    "productName": "Tehon",
+    "artifactName": "Tehon-Setup-${version}.${ext}",
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "web/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

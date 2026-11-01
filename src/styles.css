@@ -137,6 +137,7 @@ select.btn{padding-right:8px}
 .dlg input,.dlg select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 10px}
 .dlg form.set{width:min(440px,100%);max-height:calc(100dvh - 32px);overflow:auto}.dlg form.set>*{flex:none}
 .dlg .sh{font-size:12px;color:var(--muted);margin-top:4px}
+.dlg .updrow{display:flex;align-items:center;gap:10px;font-size:13px}.dlg .updrow .btn{flex:none}.dlg .updrow a{color:var(--accent)}
 .segc{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .segc button{all:unset;flex:1;text-align:center;padding:6px 0;font-size:13px;cursor:pointer}
 .segc button+button{border-left:1px solid var(--line)}

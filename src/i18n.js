@@ -41,7 +41,7 @@ const EN={
   // settings
   "カラーテーマ":"Color theme","自動":"Auto","ライト":"Light","ダーク":"Dark","テーマを読み込む（.json）":"Load theme (.json)",
   "ビューアの背景":"Viewer background","ファイル名":"File names","表示":"Show","非表示":"Hide","切断":"Disconnect","接続":"Connect",
-  "ホーム画面に追加":"Add to Home Screen","インストール":"Install","共有メニュー →「ホーム画面に追加」":"Share menu → \"Add to Home Screen\"",
+  "ホーム画面に追加":"Add to Home Screen","インストール":"Install","アップデートを確認":"Check for updates","確認中":"Checking","確認できませんでした":"Couldn't check","最新版です":"Up to date","ダウンロード":"Download","共有メニュー →「ホーム画面に追加」":"Share menu → \"Add to Home Screen\"",
   "言語":"Language","デフォルト":"Default",
   "テーマのファイルではありません":"Not a theme file","テーマを読み込みました":"Theme loaded",
   // keyboard shortcuts
