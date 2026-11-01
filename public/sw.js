@@ -15,7 +15,8 @@ self.addEventListener("fetch", e => {
   if (req.method === "POST" && url.origin === location.origin && url.pathname === "/share") return e.respondWith(share(req));
   if (req.method !== "GET") return;
   if (url.origin !== location.origin) return;
-  if (req.mode === "navigate") return e.respondWith(page(e));
+  // Only the app's own page; standalone pages (the privacy policy) load from the network as they are.
+  if (req.mode === "navigate" && !/^\/privacy(\.html)?$/.test(url.pathname)) return e.respondWith(page(e));
   if (url.pathname.startsWith("/assets/")) return e.respondWith(asset(req));
 });
 
