@@ -55,11 +55,12 @@
       ],
       "icon": "icon-mac.png",
       "category": "public.app-category.productivity",
-      "identity": "-",
+      "identity": null,
       "artifactName": "Tehon-${version}-mac.${ext}"
     },
     "dmg": {
       "title": "Tehon"
-    }
+    },
+    "afterPack": "adhoc-sign.cjs"
   }
 }
