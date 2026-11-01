@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tehon プライバシーポリシー</title>
+<style>
+:root{--bg:#DAE6DD;--surface:#E8EFEA;--line:#BFC7C5;--fg:#1B2530;--muted:#526470;--accent:#3772FF}
+@media (prefers-color-scheme:dark){:root{--bg:#101817;--surface:#172120;--line:#3C4644;--fg:#E6EEE9;--muted:#98AAA2;--accent:#5B8CFF;color-scheme:dark}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.7 system-ui,-apple-system,"Hiragino Sans",sans-serif}
+main{max-width:720px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:17px;margin:32px 0 8px;padding-top:16px;border-top:1px solid var(--line)}
+p,li{margin:6px 0}
+.muted{color:var(--muted);font-size:13px}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+<h1>Tehon プライバシーポリシー</h1>
+<p class="muted">2026年11月1日</p>
+
+<p>対象は、Tehon のウェブアプリ（tehon.pikoponpoko.workers.dev）、デスクトップ版、ブラウザ拡張機能です。</p>
+
+<h2>扱うデータ</h2>
+<ul>
+<li>Dropbox のアクセストークン：利用者の端末内にだけ保存します（ウェブアプリは IndexedDB、拡張機能は chrome.storage）。</li>
+<li>保存する画像・動画・URL、フォルダ名、タグ：利用者の Dropbox の「アプリ/Tehon」フォルダに直接保存します。</li>
+<li>拡張機能は、利用者が拡張機能を開いたときだけ、表示中のページの画像・動画の URL を読み取ります。保存するのは利用者が選んだものだけです。</li>
+</ul>
+
+<h2>送信先</h2>
+<ul>
+<li>データは利用者の端末から Dropbox の API（api.dropboxapi.com、content.dropboxapi.com）へ直接送ります。開発者のサーバーには送りません。</li>
+<li>ウェブアプリでブックマークのサムネイルを表示するとき、そのページの URL を Tehon のサーバー（Cloudflare Workers）に送り、プレビュー画像を取得します。URL は記録しません。</li>
+<li>アクセス解析、広告、第三者へのデータ提供は行いません。</li>
+</ul>
+
+<h2>削除</h2>
+<p>拡張機能の「接続を解除」、またはアプリの設定から Dropbox の接続を解除すると、端末内のトークンを削除します。Dropbox に保存したファイルは、利用者の Dropbox から削除できます。</p>
+
+<h2>問い合わせ</h2>
+<p><a href="https://github.com/pikoponpoko/tehon/issues">GitHub の Issues</a></p>
+
+<h2 lang="en">Privacy Policy (English)</h2>
+<div lang="en">
+<p>This covers the Tehon web app (tehon.pikoponpoko.workers.dev), the desktop app and the browser extension.</p>
+<ul>
+<li>The Dropbox access token is stored only on the user's device (IndexedDB in the web app, chrome.storage in the extension).</li>
+<li>Images, videos, URLs, folder names and tags are saved directly to the user's own Dropbox, in the Apps/Tehon folder.</li>
+<li>The extension reads the image and video URLs of the current page only when the user opens it, and saves only the items the user selects.</li>
+<li>Data goes from the user's device straight to the Dropbox API. It is not sent to the developer's servers.</li>
+<li>To show bookmark thumbnails, the web app sends the bookmarked page's URL to Tehon's server (Cloudflare Workers), which fetches its preview image. URLs are not logged.</li>
+<li>No analytics, no advertising, and no data is shared with third parties.</li>
+<li>Disconnecting Dropbox in the extension or the app deletes the token from the device. Saved files can be deleted from the user's Dropbox.</li>
+<li>Contact: <a href="https://github.com/pikoponpoko/tehon/issues">GitHub Issues</a></li>
+</ul>
+</div>
+</main>
+</body>
+</html>

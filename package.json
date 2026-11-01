@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "extension:store": "sh scripts/extension-store.sh"
   },
   "devDependencies": {
     "typescript": "~5.8.3",
