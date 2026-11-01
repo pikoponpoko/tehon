@@ -4,3 +4,6 @@ dist/
 .env.local
 .wrangler/
 dist-demo
+desktop/web/
+desktop/build/
+desktop/release/

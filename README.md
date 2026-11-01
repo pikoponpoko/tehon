@@ -28,6 +28,7 @@ Eagle ライブラリ読み込み（テスト用）は `npm run dev` では常�
    - **OAuth 2 › Redirect URIs** に次の2つを追加（末尾の `/` まで完全一致が必要）
      - `https://tehon.<アカウントのサブドメイン>.workers.dev/`（Cloudflare の公開 URL）
      - `http://localhost:5173/`
+     - `http://localhost:47615/`（デスクトップ版）
    - **Allow public clients (Implicit Grant & PKCE)** が `Allow` になっていることを確認
    - App key（`x7ap0g0pau1irkc`）は `src/config.ts` に記載済み。App secret は使いません
 
@@ -47,6 +48,19 @@ Eagle ライブラリ読み込み（テスト用）は `npm run dev` では常�
 手元からデプロイする場合は `npx wrangler login` のあと `npx wrangler deploy`。
 
 セキュリティヘッダー（CSP など）は `public/_headers` にあります。
+
+## デスクトップ版（Windows）
+
+`desktop/` の Electron アプリ。ブラウザ版のビルド（`dist`）を `http://localhost:47615/` で配信して表示します。Dropbox のサインインは既定のブラウザで行い、このアドレスに戻ってきます。
+
+- `desktop/package.json` の `version` を上げて main に push すると、GitHub Actions（`.github/workflows/desktop.yml`）がインストーラーを作り Release `v<version>` として公開します。それ以外の push ではビルドのみ（Actions の Artifacts に exe）
+- インストーラーは同じ appId で上書きするため、旧バージョンは自動でアンインストールされます
+- 設定の「アップデートを確認」は最新の Release と比べ、新しければダウンロードページへのリンクを出します
+
+```sh
+npm run build
+cd desktop && npm install && npm start
+```
 
 ## ブラウザ拡張（Chrome・Edge）
 
