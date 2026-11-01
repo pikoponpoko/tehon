@@ -9,6 +9,8 @@ export default {
   async fetch(req, env, ctx) {
     const u = new URL(req.url);
     if (u.pathname === "/api/ogp") return ogp(req, u, ctx);
+    // A share that reached the server (service worker not running yet) can't be kept: just open the app.
+    if (u.pathname === "/share") return Response.redirect(new URL("/", u), 303);
     return env.ASSETS.fetch(req);
   },
 };

@@ -500,9 +500,10 @@ $("addBtn").onclick=()=>formDlg(L("追加"),`<select id="fKind"><option value="f
   if($("fKind").value==="file"){pendingFolder=f;$("file").click();return}
   if($("fKind").value==="eagle"){if(dbxMode)importEagleDropbox();else $("eagleDir").click();return}
   const u=$("fUrl").value.trim();if(!/^https?:\/\//.test(u))return toast(L("URLを入力してください"));
-  const key=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-  items.unshift({id:(dbxMode?"url:":"id:url")+key,key,name:new URL(u).hostname,folder:f,kind:"url",url:u,tags:[],favorite:false,addedAt:Date.now(),trashed:false,extra:!dbxMode,dbx:dbxMode});save();render();toast(L("URLを追加しました"));
+  addUrl(u,f);render();toast(L("URLを追加しました"));
 },()=>{$("fKind").onchange=e=>{$("fUrl").hidden=e.target.value!=="url";$("fFolder").hidden=e.target.value==="eagle"}});
+function addUrl(u,folder,name){const key=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  items.unshift({id:(dbxMode?"url:":"id:url")+key,key,name:name||new URL(u).hostname,folder,kind:"url",url:u,tags:[],favorite:false,addedAt:Date.now(),trashed:false,extra:!dbxMode,dbx:dbxMode});save()}
 let pendingFolder=null;
 const pref=(k,v)=>{try{if(v===undefined)return localStorage.getItem("tehon-"+k);localStorage.setItem("tehon-"+k,v)}catch(e){return null}};
 /* palette themes come from プリプロ名人 (src/themes.json, scripts/import-themes.mjs); [bg,panel,line,text,muted,accent,danger,lane] per tone */
@@ -671,7 +672,7 @@ async function uploadFiles(files,folder){
 }
 function addFiles(files,folder){
   if(dbxMode)return uploadFiles(files,folder);
-  folder=folder||st.folder||FOLDERS[0];let n=0;
+  folder=folder||st.folder||FOLDERS[0]||"";let n=0;
   for(const f of files){
     const kind=f.type.startsWith("video/")?"video":f.type==="image/gif"?"gif":f.type.startsWith("image/")?"image":(f.type.startsWith("text/")||/\.(txt|md)$/i.test(f.name))?"text":null;if(!kind)continue;
     items.unshift({id:"id:local"+Date.now()+n,name:f.name,folder,kind,tags:[],favorite:false,addedAt:Date.now(),trashed:false,blobUrl:kind==="text"?null:URL.createObjectURL(f),file:f,local:true});n++;
@@ -890,7 +891,28 @@ let painted=false;
 if(cached){$("sync").lastChild.textContent="Dropbox";await preloadSaved()}
 render();painted=true;
 if(authErr)toast(L(authErr));
-if(conn)loadDropbox(cached);
+const loading=conn?loadDropbox(cached):null;
+if(new URLSearchParams(location.search).has("share"))takeShared();
+// Sent from the Android share menu (manifest share_target): the service worker left it in the "tehon-share" cache.
+async function takeShared(){
+  history.replaceState(null,"","/");
+  let meta,files=[];
+  try{const c=await caches.open("tehon-share");const m=await c.match("/share/meta");if(!m)return;meta=await m.json();
+    for(let i=0;i<meta.files;i++){const r=await c.match("/share/"+i);if(r)files.push(new File([await r.blob()],decodeURIComponent(r.headers.get("X-Name")||"")||"shared-"+(i+1),{type:r.headers.get("Content-Type")||""}))}
+    await caches.delete("tehon-share")}catch(e){return}
+  // The list being loaded would replace anything added before it arrives.
+  await loading;
+  const url=(meta.url.match(/https?:\/\/\S+/)||meta.text.match(/https?:\/\/\S+/)||[])[0];
+  if(!files.length&&!url&&meta.text.trim())files.push(new File([meta.text],(meta.title.trim()||"shared").replace(/[\\/:*?"<>|]/g,"_").slice(0,60)+".txt",{type:"text/plain"}));
+  if(!files.length&&!url)return;
+  const what=files.length?files.map(f=>f.name).join("\n"):url;
+  formDlg(L("追加"),`<div class="msg" style="color:var(--muted);font-size:13px;white-space:pre-line;overflow-wrap:anywhere;max-height:30vh;overflow:auto"></div>${dbxMode||FOLDERS.length?`<select id="fFolder">${folderOpts(st.folder)}</select>`:""}`,L("追加"),()=>{
+    const f=$("fFolder")?.value??"";
+    if(files.length)return addFiles(files,f);
+    addUrl(url,f,meta.title.trim()||null);render();toast(L("URLを追加しました"));
+  });
+  $("dlgForm").querySelector(".msg").textContent=what;
+}
 // Thumbnails and card text already on this device, read in one go before the first render so the list opens filled in.
 // Waits at most 500 ms; anything not read by then loads as usual, and the list itself never waits on it.
 function preloadSaved(){
