@@ -142,6 +142,9 @@ const folderValue = () => $("folder").value.trim().replace(/^\/+|\/+$/g, "");
 
 $("save").onclick = async () => {
   if (!sel.size) return;
+  // Images often live on other hosts (CDNs). Access to all sites is asked once, on the first save;
+  // without it, images the page itself can fetch still save. Must run first, inside the click.
+  await chrome.permissions.request({ origins: ["<all_urls>"] }).catch(() => false);
   const items = visible()
     .filter(i => sel.has(i.key))
     .map(i => (i.vid ? { vid: i.vid, url: i.url } : { url: i.url }));
