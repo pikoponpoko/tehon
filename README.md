@@ -80,3 +80,7 @@ cd desktop && npm install && npm start
 3. Dropbox App Console の **Redirect URIs** に `https://aabpfpgbpdpopcfckkcdhcfciihlpkji.chromiumapp.org/` を追加
 
 拡張の ID は `manifest.json` の `key` で固定しているため、どの PC で読み込んでも上の Redirect URI のままで使えます。
+
+### ストア版（Chrome ウェブストア・Edge アドオン）
+
+`npm run extension:store` で `dist-extension/tehon-store.zip` を作ります。`manifest.json` の `key` を外し（ID はストアが決める）、動画の録画（`extension/features.js` の `RECORD`）を切ります。公開後、ストアの ID の `https://<ID>.chromiumapp.org/` を Dropbox の Redirect URIs に追加します。プライバシーポリシーは `public/privacy.html`（`/privacy.html`）。

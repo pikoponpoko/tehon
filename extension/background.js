@@ -2,6 +2,7 @@
 // and the image context menu. Progress is published in chrome.storage.session.job.
 import * as dbx from "./dbx.js";
 import { fetchInPage, recordVideo } from "./collect.js";
+import { RECORD } from "./features.js";
 
 const TYPES = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/avif": "avif", "image/bmp": "bmp", "image/svg+xml": "svg", "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov" };
 const EXTS = new Set([...Object.values(TYPES), "jpeg"]);
@@ -150,6 +151,7 @@ async function getVideo(t) {
       if (b && b.type.startsWith("video/")) return { blob: b, name: fileName(t.url, b.type) };
     } catch {}
   }
+  if (!RECORD) throw new Error("record");
   const [res] = await chrome.scripting.executeScript({ target: { tabId: t.tabId }, func: recordVideo, args: [t.vid] });
   if (!res?.result?.data) throw new Error(res?.result?.error || "record");
   const blob = await (await fetch(res.result.data)).blob();

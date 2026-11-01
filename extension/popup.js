@@ -1,4 +1,5 @@
 import { collectImages } from "./collect.js";
+import { RECORD } from "./features.js";
 
 const $ = id => document.getElementById(id);
 const send = m => chrome.runtime.sendMessage(m);
@@ -52,7 +53,7 @@ async function showApp(st) {
     page = res.result;
     // Videos first: they are usually what the page is about (Instagram).
     images = [
-      ...page.videos.map(v => ({ ...v, key: "v:" + v.vid, url: v.src })),
+      ...page.videos.filter(v => RECORD || v.src).map(v => ({ ...v, key: "v:" + v.vid, url: v.src })),
       ...page.images.map(i => ({ ...i, key: i.url })),
     ];
   } catch {
