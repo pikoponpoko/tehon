@@ -8,10 +8,13 @@ import { L, langPref, setLangPref, translateDom } from "./i18n.js";
 
 translateDom();
 
-if(import.meta.env.PROD&&"serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
+// Desktop version (desktop/): the app files are on the device already, so no service worker or web update check.
+const DESKTOP=window.tehonDesktop;
+if(DESKTOP&&"serviceWorker" in navigator)navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{});
+if(!DESKTOP&&import.meta.env.PROD&&"serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
 // The service worker serves index.html from its cache, so a new deploy would only show on the launch after next.
 // When the live index.html points at different assets, it is put in that cache and 「更新」 reloads into it.
-if(import.meta.env.PROD&&"caches" in window){
+if(!DESKTOP&&import.meta.env.PROD&&"caches" in window){
   const mine=document.querySelector('script[src^="/assets/"]')?.getAttribute("src");
   let found=false;
   const check=async()=>{
@@ -559,7 +562,7 @@ $("setBtn").onclick=()=>{closeNav();
   ${H(L("ビューアのホイール"))}${seg("fWheel",[["nav",L("前 / 次")],["zoom",L("拡大 / 縮小")]],pref("wheel")||"nav")}
   ${H(L("ファイル名"))}${seg("fNames",[["on",L("表示")],["off",L("非表示")]],pref("names")||"on")}
   ${H(L("言語"))}${seg("fLang",[["auto",L("自動")],["ja","日本語"],["en","English"]],langPref())}
-  ${dbx.isConfigured()?`${H("Dropbox")}<button type="button" class="btn" id="fDbx">${dbxMode?L("切断"):L("接続")}</button>`:""}${homeSec()}<button type="button" class="btn" id="fKeys">${L("キーボードショートカット")}</button>`,L("閉じる"),()=>{},
+  ${dbx.isConfigured()?`${H("Dropbox")}<button type="button" class="btn" id="fDbx">${dbxMode?L("切断"):L("接続")}</button>`:""}${homeSec()}${DESKTOP?`<div class="updrow"><button type="button" class="btn" id="fUpd">${L("アップデートを確認")}</button><span id="fUpdR"></span></div>`:""}<button type="button" class="btn" id="fKeys">${L("キーボードショートカット")}</button>`,L("閉じる"),()=>{},
   ()=>{$("dlgForm").classList.add("set");syncSettings();$("dCancel").hidden=true;
     $("fThemes").onclick=e=>{const b=e.target.closest(".tile");if(b)setTheme(b.dataset.theme)};
     $("fVbgs").onclick=e=>{const b=e.target.closest(".tile");if(b)setVBg(b.dataset.vbg)};
@@ -569,6 +572,11 @@ $("setBtn").onclick=()=>{closeNav();
     $("fTone").onclick=e=>{const b=e.target.closest("button");if(b){pref("tone",b.dataset.v);setTheme(pref("theme"))}};
     $("fThemeFile").onclick=()=>{const i=document.createElement("input");i.type="file";i.accept=".json,application/json";i.onchange=()=>i.files[0]&&importTheme(i.files[0]);i.click()};
     if($("fInstall"))$("fInstall").onclick=async()=>{const e=installEv;if(!e)return;e.prompt();if((await e.userChoice).outcome==="accepted"){installEv=null;$("fInstall").previousElementSibling.remove();$("fInstall").remove()}};
+    if($("fUpd"))$("fUpd").onclick=async()=>{const o=$("fUpdR");o.textContent=L("確認中");const u=await DESKTOP.checkUpdate();
+      if(!u.latest){o.textContent=L("確認できませんでした");return}
+      const n=v=>v.split(".").map(x=>parseInt(x)||0),a=n(u.latest),c=n(u.current),i=a.findIndex((x,k)=>x!==(c[k]||0));
+      if(!(i>=0&&a[i]>(c[i]||0))){o.textContent=`${L("最新版です")} v${u.current}`;return}
+      o.innerHTML="";o.append(Object.assign(document.createElement("a"),{href:u.url,target:"_blank",rel:"noopener",textContent:`${L("ダウンロード")} v${u.latest}`}))};
     $("fKeys").onclick=keysDlg;const b=$("fDbx");if(b)b.onclick=async()=>{if(!dbxMode)return dbx.startAuth();flushSave();await dbx.disconnect();try{localStorage.removeItem(CACHE)}catch(e){}location.reload()}})};
 const TEXT=["txt","md","text","csv","json"];
 // Video cards: a still of the video, made on this device the first time it plays in the list and kept in IndexedDB
