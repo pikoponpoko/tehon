@@ -754,7 +754,11 @@ async function openFmt(it,ph){
   }catch(e){if(live()){$("vState").textContent="";toast(L("プレビューできない形式です"))}}
 }
 $("vPgUp").onclick=()=>V.doc&&showPage(V.doc.p-1);$("vPgDn").onclick=()=>V.doc&&showPage(V.doc.p+1);
-function closeViewer(){settle(true);endFmt();V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");vf.removeAttribute("src");renderGrid();cardAt(V.i)?.focus()}
+function closeViewer(){settle(true);endFmt();V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");vf.removeAttribute("src");$("viewer").style.opacity="";$("viewer").style.transition="";listBack()}
+// Back to the list where it was: the scroll position stays, and only moves if the last shown item is out of view.
+function listBack(){const w=$("wrap"),g=$("grid"),top=w.scrollTop;renderGrid();const c=cardAt(V.i);
+  while(w.scrollHeight<top+w.clientHeight&&g.querySelector(".more"))appendCards(g.querySelectorAll(".card").length);
+  w.scrollTop=top;if(!c)return;c.focus({preventScroll:true});const r=c.getBoundingClientRect(),b=w.getBoundingClientRect();if(r.bottom<b.top||r.top>b.bottom)c.scrollIntoView({block:"nearest"})}
 function loadV(){
   settle(true);cancelAnimationFrame(V.raf);vv.pause();endFmt();V.video=null;delete vi.dataset.ph;
   const it=list[V.i];$("vTitle").textContent=it.name;$("vFav").classList.toggle("on",it.favorite);
@@ -861,16 +865,23 @@ stage.addEventListener("wheel",e=>{if(selfInput(e.target))return;e.preventDefaul
 let gs=1;stage.addEventListener("gesturestart",e=>{e.preventDefault();gs=1});
 stage.addEventListener("gesturechange",e=>{e.preventDefault();if(pts.size>1)return;const [x,y]=rel(e);zoomAt(e.scale/gs,x,y);gs=e.scale});
 // Swipe (touch/pen at fit size): the item follows the finger sideways; release past 15% of the width or with a flick to page, otherwise it springs back.
+// A downward swipe instead moves the item down and fades the viewer; release past 15% of the height or with a flick to go back to the list.
 let sw=null,swiped=false,multi=false;
+const vFade=()=>{$("viewer").style.opacity=1-Math.min(.7,Math.max(0,V.y)/stage.clientHeight*1.4)};
 stage.addEventListener("pointerdown",e=>{if(selfInput(e.target))return;stage.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);if(pts.size===1)multi=false;
-  if(pts.size===1&&e.pointerType!=="mouse"&&(!V.el||Math.abs(V.z-V.fit)<.001)){settle();sw={x:V.x,t:performance.now(),v:0,moved:0}}else sw=null;
+  if(pts.size===1&&e.pointerType!=="mouse"&&(!V.el||Math.abs(V.z-V.fit)<.001)){settle();sw={x:V.x,t:performance.now(),v:0,moved:0,sx:e.clientX,sy:e.clientY,ax:null}}else sw=null;
   if(pts.size===2){const [a,b]=[...pts.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])};multi=true}});
 stage.addEventListener("pointermove",e=>{if(!pts.has(e.pointerId))return;const p=pts.get(e.pointerId);
   if(pts.size===2&&pinch){pts.set(e.pointerId,[e.clientX,e.clientY]);const [a,b]=[...pts.values()];const d=Math.hypot(a[0]-b[0],a[1]-b[1]);const r=stage.getBoundingClientRect();zoomAt(d/pinch.d,(a[0]+b[0])/2-r.left-r.width/2,(a[1]+b[1])/2-r.top-r.height/2);pinch.d=d;return}
+  if(sw&&!sw.ax){const tx=e.clientX-sw.sx,ty=e.clientY-sw.sy;if(Math.hypot(tx,ty)<8)return;sw.ax=ty>Math.abs(tx)?"y":"x"}
+  if(sw&&sw.ax==="y"){const dy=e.clientY-p[1],n=performance.now();sw.moved+=Math.abs(dy);sw.v=dy/Math.max(1,n-sw.t);sw.t=n;V.y=Math.max(0,V.y+dy);pts.set(e.pointerId,[e.clientX,e.clientY]);applyV();vFade();return}
   if(sw){const dx=e.clientX-p[0],n=performance.now(),edge=(V.i===0&&V.x+dx>0)||(V.i===list.length-1&&V.x+dx<0);
     sw.moved+=Math.abs(dx);sw.v=dx/Math.max(1,n-sw.t);sw.t=n;V.x+=edge?dx*.35:dx;pts.set(e.pointerId,[e.clientX,e.clientY]);applyV();return}
   if(V.el===vf)return;V.x+=e.clientX-p[0];V.y+=e.clientY-p[1];pts.set(e.pointerId,[e.clientX,e.clientY]);applyV()});
 const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(!sw||pts.size)return;const s=sw;sw=null;swiped=s.moved>10;
+  if(s.ax==="y"){const vw=$("viewer");
+    if(e.type!=="pointercancel"&&(V.y>stage.clientHeight*.15||(s.v>.5&&V.y>15))){vw.style.transition="opacity 120ms";vw.style.opacity="0";setTimeout(()=>{vw.style.transition="";closeViewer()},120)}
+    else{vw.style.transition="opacity 200ms";vw.style.opacity="";glide(0,200,()=>vw.style.transition="")}return}
   if(e.type==="pointercancel"){glide(0,200);return}
   const d=V.x<-stage.clientWidth*.15||(s.v<-.3&&V.x<-15)?1:V.x>stage.clientWidth*.15||(s.v>.3&&V.x>15)?-1:0;
   if(d&&list[V.i+d])go(d,true);else if(V.x)glide(0,200)};
