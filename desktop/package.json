@@ -1,7 +1,7 @@
 {
   "name": "tehon-desktop",
   "productName": "Tehon",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Tehon",
   "author": "pikoponpoko",
@@ -9,7 +9,8 @@
   "scripts": {
     "start": "npm run copy && electron .",
     "copy": "node copy-web.cjs",
-    "dist": "npm run copy && electron-builder --win --publish never"
+    "dist": "npm run copy && electron-builder --win --publish never",
+    "dist:mac": "npm run copy && electron-builder --mac --publish never"
   },
   "devDependencies": {
     "electron": "45.1.0",
@@ -42,6 +43,24 @@
       "oneClick": true,
       "perMachine": false,
       "deleteAppDataOnUninstall": false
-    }
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "icon": "icon-mac.png",
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "artifactName": "Tehon-${version}-mac.${ext}"
+    },
+    "dmg": {
+      "title": "Tehon"
+    },
+    "afterPack": "adhoc-sign.cjs"
   }
 }
