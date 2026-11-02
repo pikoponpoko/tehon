@@ -78,6 +78,10 @@ for(let i=0;i<72;i++){
 // persisted per-viewer edits while not connected to Dropbox
 const KEY=DEMO?"tehon-demo-v1":"tehon-local-v1";
 try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s){const m=new Map(s.map(x=>[x.id,x]));items.forEach(it=>{const x=m.get(it.id);if(x){it.tags=x.tags;it.favorite=x.favorite;it.folder=x.folder;it.trashed=x.trashed;if(x.text!=null)it.text=x.text}});s.filter(x=>x.extra).forEach(x=>items.push(x))}}catch(e){}
+// Archived folders: hidden from the library (and everything under them) but kept as they are.
+const AKEY=DEMO?"tehon-demo-arch":"tehon-local-arch";
+let ARCH=new Set();try{ARCH=new Set(JSON.parse(localStorage.getItem(AKEY)||"[]"))}catch(e){}
+const inArch=f=>{for(const a of ARCH)if(f===a||f.startsWith(a+"/"))return true;return false};
 const save=()=>{if(eagleMode)return;if(dbxMode)return dbxSave();try{localStorage.setItem(KEY,JSON.stringify(items.map(it=>it.extra?{...it,blobUrl:null}:{id:it.id,tags:it.tags,favorite:it.favorite,folder:it.folder,trashed:it.trashed,text:it.kind==="text"?it.text:undefined})))}catch(e){}};
 
 /* drawing demo artwork */
@@ -222,16 +226,16 @@ function dbxItem(e,m){
 const CACHE="tehon-dbx-cache";
 function loadCache(){
   try{const c=JSON.parse(localStorage.getItem(CACHE)||"null");if(!c)return false;
-    dbxMode=true;items=c.items;FOLDERS=c.folders;TAGS.length=0;TAGS.push(...new Set(items.flatMap(i=>i.tags)));
+    dbxMode=true;items=c.items;FOLDERS=c.folders;ARCH=new Set(c.arch||[]);TAGS.length=0;TAGS.push(...new Set(items.flatMap(i=>i.tags)));
     snap.clear();items.forEach(it=>snap.set(it.id,JSON.stringify(metaOf(it))));return true}catch(e){return false}
 }
-const saveCache=()=>{try{localStorage.setItem(CACHE,JSON.stringify({items,folders:FOLDERS}))}catch(e){}};
+const saveCache=()=>{try{localStorage.setItem(CACHE,JSON.stringify({items,folders:FOLDERS,arch:[...ARCH]}))}catch(e){}};
 async function loadDropbox(keep=false){
   $("sync").lastChild.textContent=L("読み込み中");
   try{
     const [entries,meta,em,og]=await Promise.all([dbx.listAll(n=>toast(L("読み込み中 {n} 件",{n}))),dbx.loadMeta(),dbx.loadEagleManifest(),dbx.listTree(OGP_DIR).catch(()=>[])]);
     ogpFiles=new Map(og.filter(e=>e[".tag"]==="file").map(e=>[e.name,e.id]));
-    own=meta.own;
+    own=meta.own;ARCH=new Set(Object.entries(meta.folders).filter(([,v])=>v.archived).map(([k])=>k));
     const ef=new Map(Object.entries(em?.files||{}).map(([k,v])=>[k.normalize("NFC").toLowerCase(),v]));
     const out=entries.filter(e=>e[".tag"]==="file").map(e=>{const x=ef.get(e.path_lower.normalize("NFC"));const it=dbxItem(e,meta.items[e.id]||x);if(x?.addedAt)it.addedAt=x.addedAt;return it});
     for(const u of em?.urls||[]){const k="eagle-"+u.addedAt+"-"+u.url;if(!meta.urls[k])meta.urls[k]={...u,updatedAt:0}}
@@ -258,7 +262,8 @@ const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,tag:null,q:"",
 let list=[];
 function filtered(){
   const q=st.q.trim().toLowerCase();
-  let l=items.filter(it=>st.view==="trash"?it.trashed:!it.trashed);
+  const ia=!!st.folder&&inArch(st.folder);
+  let l=items.filter(it=>st.view==="trash"?it.trashed:!it.trashed&&(ia||!inArch(it.folder)));
   if(st.view==="fav")l=l.filter(it=>it.favorite);
   if(st.view==="url")l=l.filter(it=>it.kind==="url");
   if(st.folder)l=l.filter(it=>it.folder===st.folder||it.folder.startsWith(st.folder+"/"));
@@ -274,7 +279,8 @@ function filtered(){
 const typeOf=it=>it.badge?"x:"+it.badge:it.kind;
 const TYPE_NAMES={image:L("画像"),gif:"GIF",video:L("動画"),text:L("テキスト"),url:"URL"};
 function renderTypes(){
-  const cnt=new Map();items.forEach(i=>{if(!i.trashed){const t=typeOf(i);cnt.set(t,(cnt.get(t)||0)+1)}});
+  const ia=!!st.folder&&inArch(st.folder);
+  const cnt=new Map();items.forEach(i=>{if(!i.trashed&&(ia||!inArch(i.folder))){const t=typeOf(i);cnt.set(t,(cnt.get(t)||0)+1)}});
   if(st.type&&!cnt.has(st.type))cnt.set(st.type,0);
   const ks=Object.keys(TYPE_NAMES),ord=t=>{const i=ks.indexOf(t);return i<0?ks.length:i};
   const ts=[...cnt.keys()].sort((a,b)=>ord(a)-ord(b)||a.localeCompare(b));
@@ -284,11 +290,12 @@ function renderTypes(){
 // Section and folder open/closed state, kept per device.
 const fold=(()=>{try{const s=JSON.parse(localStorage.getItem("tehon-fold")||"null");if(s)return{sec:s.sec||{},open:new Set(s.open||[])}}catch(e){}return{sec:{},open:new Set()}})();
 const saveFold=()=>{try{localStorage.setItem("tehon-fold",JSON.stringify({sec:fold.sec,open:[...fold.open]}))}catch(e){}};
+if(!("arch" in fold.sec))fold.sec.arch=true;
 document.querySelectorAll(".sh").forEach(b=>{const k=b.dataset.sec,apply=()=>{const c=!!fold.sec[k];b.setAttribute("aria-expanded",!c);b.closest(".sec").classList.toggle("shut",c)};apply();b.onclick=()=>{fold.sec[k]=!fold.sec[k];saveFold();apply()}});
 function navBtn(label,n,on,fn,cls=""){const b=document.createElement("button");b.className=(on?"on ":"")+cls;b.innerHTML=`<span></span><span class="n">${n}</span>`;b.firstChild.textContent=label;b.onclick=()=>{fn();closeNav()};return b}
 function renderSide(){
   renderTypes();
-  const live=items.filter(i=>!i.trashed);
+  const live=items.filter(i=>!i.trashed&&!inArch(i.folder));
   const lib=$("lib");lib.replaceChildren(
     navBtn(L("すべて"),live.length,st.view==="all"&&!st.folder&&!st.tag,()=>setView("all")),
     favBtn(navBtn(L("お気に入り"),live.filter(i=>i.favorite).length,st.view==="fav",()=>setView("fav"))),
@@ -296,7 +303,9 @@ function renderSide(){
     navBtn(L("ゴミ箱"),items.filter(i=>i.trashed).length,st.view==="trash",()=>setView("trash")));
   const f=$("folders");f.replaceChildren();
   const all=new Set();FOLDERS.forEach(x=>{const a=x.split("/");a.forEach((_,i)=>all.add(a.slice(0,i+1).join("/")))});
-  const cnt=new Map();live.forEach(i=>{const a=i.folder.split("/");a.forEach((_,k)=>{const q=a.slice(0,k+1).join("/");cnt.set(q,(cnt.get(q)||0)+1)})});
+  const arch=[...ARCH].filter(q=>all.has(q)&&![...ARCH].some(a=>q.startsWith(a+"/"))).sort((a,b)=>a.localeCompare(b,"ja"));
+  [...all].forEach(q=>{if(inArch(q))all.delete(q)});
+  const cnt=new Map();items.filter(i=>!i.trashed).forEach(i=>{const a=i.folder.split("/");a.forEach((_,k)=>{const q=a.slice(0,k+1).join("/");cnt.set(q,(cnt.get(q)||0)+1)})});
   const order=[...all].sort((a,b)=>{const x=a.split("/"),y=b.split("/");for(let i=0;i<Math.min(x.length,y.length);i++){if(x[i]!==y[i]){const ix=FOLDERS.findIndex(z=>z.split("/")[i]===x[i]),iy=FOLDERS.findIndex(z=>z.split("/")[i]===y[i]);return ix-iy||x[i].localeCompare(y[i],"ja")}}return x.length-y.length});
   const kids=new Set(order.filter(q=>q.includes("/")).map(q=>q.slice(0,q.lastIndexOf("/"))));
   const shown=q=>{const a=q.split("/");for(let i=1;i<a.length;i++)if(!fold.open.has(a.slice(0,i).join("/")))return false;return true};
@@ -306,6 +315,8 @@ function renderSide(){
     if(kids.has(q)){const o=fold.open.has(q);t.classList.add("has");t.classList.toggle("open",o);b.setAttribute("aria-expanded",o);t.onclick=e=>{e.stopPropagation();tw(q,!o)};
       b.onkeydown=e=>{if(e.key==="ArrowRight"&&!o||e.key==="ArrowLeft"&&o){e.preventDefault();tw(q,!o);$("folders").querySelector(`[data-q="${CSS.escape(q)}"]`)?.focus()}}}
     b.dataset.q=q;b.prepend(t);f.append(b)}
+  $("archSec").hidden=!arch.length;const ar=$("arch");ar.replaceChildren();
+  for(const q of arch){const b=navBtn(q,cnt.get(q)||0,st.folder===q,()=>setFolder(q));b.dataset.q=q;ar.append(b)}
   const tg=$("tags");tg.replaceChildren();
   const tagAll=[...new Set(live.flatMap(i=>i.tags))].sort((a,b)=>a.localeCompare(b,"ja"));
   for(const t of tagAll){const b=navBtn("# "+t,live.filter(i=>i.tags.includes(t)).length,st.tag===t,()=>setTag(t));b.oncontextmenu=e=>{e.preventDefault();editTag(t)};b.ondblclick=()=>editTag(t);tg.append(b)}
@@ -319,6 +330,19 @@ function editTag(t){
   ()=>{$("fTag").value=t;$("fDel").onclick=()=>{const n=items.filter(i=>i.tags.includes(t)).length;
     confirmDlg(L("「{t}」を削除",{t}),L("{n} 件から外します。",{n}),()=>{items.forEach(i=>{if(i.tags.includes(t))i.tags=i.tags.filter(z=>z!==t)});if(st.tag===t)st.tag=null;save();render();toast(L("「{t}」を削除しました",{t}))})}});
 }
+// Right-click (long-press on touch) a folder: archive it, or bring an archived one back.
+function folderDlg(q){const on=ARCH.has(q);
+  formDlg(q.split("/").pop(),"",on?L("アーカイブから戻す"):L("アーカイブ"),()=>{
+    on?ARCH.delete(q):ARCH.add(q);
+    if(!on&&st.folder&&(st.folder===q||st.folder.startsWith(q+"/")))st.folder=null;
+    if(dbxMode&&own){own.folders=own.folders||{};own.folders[q]={archived:!on,updatedAt:Date.now()};clearTimeout(saveT);saveT=setTimeout(flushSave,1500);saveCache()}
+    else try{localStorage.setItem(AKEY,JSON.stringify([...ARCH]))}catch(e){}
+    st.sel.clear();render();toast(L(on?"「{t}」を戻しました":"「{t}」をアーカイブしました",{t:q.split("/").pop()}))})}
+{let t,p0;const side=$("side");
+  side.addEventListener("pointerdown",e=>{const b=e.target.closest("[data-q]");clearTimeout(t);if(!b||e.pointerType==="mouse")return;p0=[e.clientX,e.clientY];t=setTimeout(()=>{t="done";folderDlg(b.dataset.q)},450)});
+  ["pointerup","pointercancel","pointermove"].forEach(ev=>side.addEventListener(ev,e=>{if(ev==="pointermove"&&p0&&Math.hypot(e.clientX-p0[0],e.clientY-p0[1])<8)return;if(t!=="done")clearTimeout(t)}));
+  side.addEventListener("click",e=>{if(t==="done"){t=null;e.stopImmediatePropagation()}},true);
+  side.addEventListener("contextmenu",e=>{const b=e.target.closest("[data-q]");if(!b)return;e.preventDefault();if(t!=="done"){clearTimeout(t);folderDlg(b.dataset.q)}})}
 function setView(v){st.view=v;st.folder=null;st.tag=null;st.sel.clear();render()}
 function setFolder(f){st.view="all";st.folder=st.folder===f?null:f;st.sel.clear();render()}
 function setTag(t){if(st.view==="trash")st.view="all";st.tag=st.tag===t?null:t;st.sel.clear();render()}
