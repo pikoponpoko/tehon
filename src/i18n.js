@@ -7,7 +7,7 @@ export const LANG=p==="ja"||p==="en"?p:/^ja\b/i.test((navigator.languages&&navig
 
 const EN={
   // sidebar, toolbar
-  "未接続":"Not connected","設定":"Settings","フォルダ":"Folders","タグ":"Tags","メニュー":"Menu","検索":"Search",
+  "未接続":"Not connected","設定":"Settings","フォルダ":"Folders","タグ":"Tags","メニュー":"Menu","検索":"Search","ツールバーを畳む":"Hide toolbar","ツールバーを開く":"Show toolbar",
   "種類":"Type","すべての種類":"All types","並べ替え":"Sort","追加日（新しい順）":"Date added (newest)","追加日（古い順）":"Date added (oldest)",
   "名前":"Name","ランダム":"Random","シャッフル":"Shuffle","レイアウト":"Layout","グリッド":"Grid","ウォーターフォール":"Waterfall","列数":"Columns",
   "選択":"Select","完了":"Done","＋ 追加":"＋ Add","更新":"Update","件選択":"selected","お気に入り":"Favorites","タグを追加":"Add tag","移動":"Move",
