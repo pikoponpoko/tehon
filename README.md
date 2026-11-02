@@ -86,4 +86,4 @@ cd desktop && npm install && npm start
 
 `npm run extension:store` で `dist-extension/tehon-store.zip` を作ります。`manifest.json` の `key` を外します（ID はストアが決める）。審査で求められた場合は `NO_RECORD=1 npm run extension:store` で動画の録画（`extension/features.js` の `RECORD`）を切ったものを作れます。公開後、ストアの ID の `https://<ID>.chromiumapp.org/` を Dropbox の Redirect URIs に追加します。プライバシーポリシーは `public/privacy.html`。ストアに書く URL は `https://tehon.pikoponpoko.workers.dev/privacy`（`/privacy.html` は Workers が `/privacy` へリダイレクトする）。サービスワーカーはこのページをアプリ画面に差し替えない。
 
-ストアの画像基準（https://developer.chrome.com/docs/webstore/images ）に沿った画像は `sh scripts/extension-icons.sh`（ffmpeg が必要）で `public/icons/icon-512.png` から書き出します。`extension/icons/128.png`（イラストを 96×96 に収め周囲 16px 透過）と、`dist-extension/` のプロモーション画像 440×280・1400×560。
+ストアの画像基準（https://developer.chrome.com/docs/webstore/images ）に沿った画像は `sh scripts/extension-icons.sh`（ffmpeg が必要）で `desktop/icon-mac.png`（透過のイラスト）から書き出します。`extension/icons/` の 16・32・48・128（128 はイラストを 96×96 に収め周囲 16px 透過）と、`dist-extension/` のプロモーション画像 440×280・1400×560。
