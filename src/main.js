@@ -308,7 +308,8 @@ function renderSide(){
     b.dataset.q=q;b.prepend(t);f.append(b)}
   const tg=$("tags");tg.replaceChildren();
   const tagAll=[...new Set(live.flatMap(i=>i.tags))].sort((a,b)=>a.localeCompare(b,"ja"));
-  for(const t of tagAll){const b=navBtn("# "+t,live.filter(i=>i.tags.includes(t)).length,st.tag===t,()=>setTag(t));b.oncontextmenu=e=>{e.preventDefault();editTag(t)};b.ondblclick=()=>editTag(t);tg.append(b)}
+  const tc=new Map(tagAll.map(t=>[t,live.filter(i=>i.tags.includes(t)).length])),lo=Math.log(Math.min(...tc.values())),rg=Math.log(Math.max(...tc.values()))-lo||1;
+  for(const t of tagAll){const n=tc.get(t),b=navBtn(t,n,st.tag===t,()=>setTag(t),"l"+(1+Math.floor((Math.log(n)-lo)/rg*3.999)));b.oncontextmenu=e=>{e.preventDefault();editTag(t)};b.ondblclick=()=>editTag(t);tg.append(b)}
 }
 // Rename (merging into an existing tag of the same name) or delete a tag on every item.
 function editTag(t){
