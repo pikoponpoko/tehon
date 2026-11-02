@@ -9,7 +9,7 @@
 set -e
 cd "$(dirname "$0")/.."
 SRC=${1:-desktop/icon-mac.png}
-BG=0x3772FF # --accent of the default theme
+BG=0xA2EABA # the green of the icon's pin
 mkdir -p dist-extension
 # Trim the transparent margin so the artwork itself is what gets sized.
 CROP=$(ffmpeg -i "$SRC" -vf "alphaextract,bbox=min_val=8" -f null - 2>&1 | grep -o "crop=[0-9:]*" | tail -1)
