@@ -220,12 +220,14 @@ function dbxItem(e,m){
 }
 // Last Dropbox listing, shown at startup while the fresh listing loads.
 const CACHE="tehon-dbx-cache";
+// Dropbox folder id → path, for ?folder=id:xxx (links from Soku Conte keep the folder's id).
+let FOLDER_IDS={};
 function loadCache(){
   try{const c=JSON.parse(localStorage.getItem(CACHE)||"null");if(!c)return false;
-    dbxMode=true;items=c.items;FOLDERS=c.folders;TAGS.length=0;TAGS.push(...new Set(items.flatMap(i=>i.tags)));
+    dbxMode=true;items=c.items;FOLDERS=c.folders;FOLDER_IDS=c.folderIds||{};TAGS.length=0;TAGS.push(...new Set(items.flatMap(i=>i.tags)));
     snap.clear();items.forEach(it=>snap.set(it.id,JSON.stringify(metaOf(it))));return true}catch(e){return false}
 }
-const saveCache=()=>{try{localStorage.setItem(CACHE,JSON.stringify({items,folders:FOLDERS}))}catch(e){}};
+const saveCache=()=>{try{localStorage.setItem(CACHE,JSON.stringify({items,folders:FOLDERS,folderIds:FOLDER_IDS}))}catch(e){}};
 async function loadDropbox(keep=false){
   $("sync").lastChild.textContent=L("読み込み中");
   try{
@@ -239,10 +241,12 @@ async function loadDropbox(keep=false){
     const oldRev=new Map(items.map(i=>[i.id,i.rev]));
     for(const it of out)if(oldRev.has(it.id)&&oldRev.get(it.id)!==it.rev){thumbCache.delete(it.id);thumbAsked.delete(it.id);previewP.delete(it.id);textMem.delete(it.id);posterMem.delete(it.id);posterP.delete(it.id)}
     dbxMode=true;eagleMode=false;dbxPending=false;items=out;
-    FOLDERS=entries.filter(e=>e[".tag"]==="folder").map(e=>e.path_display.slice(1)).sort((a,b)=>a.localeCompare(b,"ja"));
+    const fe=entries.filter(e=>e[".tag"]==="folder");
+    FOLDERS=fe.map(e=>e.path_display.slice(1)).sort((a,b)=>a.localeCompare(b,"ja"));FOLDER_IDS=Object.fromEntries(fe.map(e=>[e.id,e.path_display.slice(1)]));
     TAGS.length=0;TAGS.push(...new Set(out.flatMap(i=>i.tags)));
     snap.clear();items.forEach(it=>snap.set(it.id,JSON.stringify(metaOf(it))));
     if(!keep){st.view="all";st.folder=null;st.tag=null;st.q="";$("q").value="";st.sel.clear()}
+    openFolderQ(true);
     saveCache();dbx.cachePrune(new Set([...out.map(i=>i.id),...ogpFiles.values()])).catch(()=>{});
     $("sync").lastChild.textContent="Dropbox";$("toast").hidden=true;render();
   }catch(e){
@@ -904,11 +908,25 @@ document.addEventListener("keydown",e=>{if($("viewer").hidden||e.target.id==="vT
 addEventListener("resize",()=>{if(!$("viewer").hidden)fitV()});
 
 document.querySelectorAll(".sb").forEach(el=>{let t;el.addEventListener("scroll",()=>{el.classList.add("show");clearTimeout(t);t=setTimeout(()=>el.classList.remove("show"),900)},{passive:true})});
+// ?folder=id:xxx or ?folder=/path opens that folder. Kept in sessionStorage across the Dropbox sign-in redirect.
+let FOLDER_Q=new URLSearchParams(location.search).get("folder");
+try{FOLDER_Q?sessionStorage.setItem("tehon-folder-q",FOLDER_Q):FOLDER_Q=sessionStorage.getItem("tehon-folder-q")}catch(e){}
+function openFolderQ(final){
+  if(!FOLDER_Q)return;
+  const p=FOLDER_Q.replace(/^\/+|\/+$/g,"").toLowerCase(),f=FOLDER_Q.startsWith("id:")?FOLDER_IDS[FOLDER_Q]:FOLDERS.find(x=>x.toLowerCase()===p);
+  if(f!=null){st.view="all";st.folder=f;st.tag=null;st.q="";$("q").value="";st.sel.clear();
+    const a=f.split("/");for(let i=1;i<a.length;i++)fold.open.add(a.slice(0,i).join("/"));
+    if(fold.sec.folders){fold.sec.folders=false;const h=document.querySelector('.sh[data-sec="folders"]');h.setAttribute("aria-expanded",true);h.closest(".sec").classList.remove("shut")}saveFold()}
+  else if(!final)return;
+  else toast(L("フォルダが見つかりません"));
+  FOLDER_Q=null;try{sessionStorage.removeItem("tehon-folder-q")}catch(e){}
+  const u=new URL(location.href);u.searchParams.delete("folder");history.replaceState(null,"",u.pathname+u.search+u.hash);
+}
 const authErr=await dbx.handleRedirect();
 const conn=!DEMO&&await dbx.isConnected();
 const cached=conn&&loadCache();dbxPending=conn&&!cached;
 let painted=false;
-if(cached){$("sync").lastChild.textContent="Dropbox";await preloadSaved()}
+if(cached){$("sync").lastChild.textContent="Dropbox";openFolderQ(false);await preloadSaved()}
 render();painted=true;
 if(authErr)toast(L(authErr));
 const loading=conn?loadDropbox(cached):null;

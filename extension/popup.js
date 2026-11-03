@@ -5,7 +5,7 @@ const $ = id => document.getElementById(id);
 const send = m => chrome.runtime.sendMessage(m);
 const splitTags = s => [...new Set(s.split(/[,、\s]+/).map(t => t.trim()).filter(Boolean))];
 
-let tab = null, page = null, images = [], sel = new Set(), lastClick = -1;
+let tab = null, page = null, images = [], sel = new Set(), lastClick = -1, recent = [];
 
 async function init() {
   const st = await send({ type: "state" });
@@ -33,14 +33,32 @@ $("disconnect").onclick = async () => {
   showLogin();
 };
 
+// Recently used folders first.
 function fillFolders(list) {
-  $("folders").replaceChildren(...list.map(f => Object.assign(document.createElement("option"), { value: f })));
+  const r = new Set(recent);
+  $("folders").replaceChildren(...[...recent, ...list.filter(f => !r.has(f))].map(f => Object.assign(document.createElement("option"), { value: f })));
 }
+
+// The list only shows entries matching what is typed, so empty the field while it is focused
+// (the current folder stays as the placeholder and comes back if nothing is entered).
+const fo = $("folder");
+fo.addEventListener("focus", () => {
+  if (!fo.value) return;
+  fo.dataset.prev = fo.value;
+  fo.placeholder = fo.value;
+  fo.value = "";
+});
+fo.addEventListener("blur", () => {
+  if (!fo.value.trim() && fo.dataset.prev) fo.value = fo.dataset.prev;
+  fo.placeholder = "フォルダ";
+  delete fo.dataset.prev;
+});
 
 async function showApp(st) {
   $("login").hidden = true;
   $("app").hidden = false;
   $("folder").value = st.last.folder || "";
+  recent = st.recent || [];
   $("tags").value = (st.last.tags || []).join(" ");
   fillFolders(st.folders);
   send({ type: "folders" }).then(r => r.folders && fillFolders(r.folders));
@@ -138,7 +156,7 @@ function selectAll() {
 $("all").onclick = selectAll;
 $("min").onchange = render;
 
-const folderValue = () => $("folder").value.trim().replace(/^\/+|\/+$/g, "");
+const folderValue = () => (fo.value.trim() || fo.dataset.prev || "").replace(/^\/+|\/+$/g, "");
 
 $("save").onclick = async () => {
   if (!sel.size) return;
