@@ -25,8 +25,8 @@ chrome.runtime.onMessage.addListener((m, _sender, reply) => {
 async function handle(m) {
   switch (m.type) {
     case "state": {
-      const { folders = [], last = { folder: "", tags: [] } } = await chrome.storage.local.get(["folders", "last"]);
-      return { connected: await dbx.isConnected(), folders, last, redirect: dbx.redirectUri() };
+      const { folders = [], last = { folder: "", tags: [] }, recent = [] } = await chrome.storage.local.get(["folders", "last", "recent"]);
+      return { connected: await dbx.isConnected(), folders, last, recent, redirect: dbx.redirectUri() };
     }
     case "connect":
       await dbx.connect();
@@ -40,11 +40,11 @@ async function handle(m) {
     case "folders":
       return { folders: await refreshFolders() };
     case "save":
-      await chrome.storage.local.set({ last: { folder: m.folder, tags: m.tags } });
+      await remember(m);
       enqueue(m);
       return {};
     case "saveUrl": {
-      await chrome.storage.local.set({ last: { folder: m.folder, tags: m.tags } });
+      await remember(m);
       const t = Date.now();
       const key = t.toString(36) + Math.random().toString(36).slice(2, 6);
       await dbx.updateDevice(d => {
@@ -53,6 +53,13 @@ async function handle(m) {
       return {};
     }
   }
+}
+
+// Last folder and tags, plus the folders saved to most recently (listed first in the popup).
+async function remember(m) {
+  const { recent = [] } = await chrome.storage.local.get("recent");
+  const next = m.folder ? [m.folder, ...recent.filter(f => f !== m.folder)].slice(0, 8) : recent;
+  await chrome.storage.local.set({ last: { folder: m.folder, tags: m.tags }, recent: next });
 }
 
 async function refreshFolders() {
