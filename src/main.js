@@ -77,12 +77,17 @@ for(let i=0;i<72;i++){
 }else{FOLDERS=[];TAGS.length=0}
 // persisted per-viewer edits while not connected to Dropbox
 const KEY=DEMO?"tehon-demo-v1":"tehon-local-v1";
-try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s){const m=new Map(s.map(x=>[x.id,x]));items.forEach(it=>{const x=m.get(it.id);if(x){it.tags=x.tags;it.favorite=x.favorite;it.folder=x.folder;it.trashed=x.trashed;if(x.text!=null)it.text=x.text}});s.filter(x=>x.extra).forEach(x=>items.push(x))}}catch(e){}
+try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s){const m=new Map(s.map(x=>[x.id,x]));items.forEach(it=>{const x=m.get(it.id);if(x){it.tags=x.tags;it.favorite=x.favorite;it.folder=x.folder;it.trashed=x.trashed;if(x.also)it.also=x.also;if(x.text!=null)it.text=x.text}});s.filter(x=>x.extra).forEach(x=>items.push(x))}}catch(e){}
 // Archived folders: hidden from the library (and everything under them) but kept as they are.
 const AKEY=DEMO?"tehon-demo-arch":"tehon-local-arch";
 let ARCH=new Set();try{ARCH=new Set(JSON.parse(localStorage.getItem(AKEY)||"[]"))}catch(e){}
 const inArch=f=>{for(const a of ARCH)if(f===a||f.startsWith(a+"/"))return true;return false};
-const save=()=>{if(eagleMode)return;if(dbxMode)return dbxSave();try{localStorage.setItem(KEY,JSON.stringify(items.map(it=>it.extra?{...it,blobUrl:null}:{id:it.id,tags:it.tags,favorite:it.favorite,folder:it.folder,trashed:it.trashed,text:it.kind==="text"?it.text:undefined})))}catch(e){}};
+// An item lives in its own folder and can be linked into more (it.also): it shows in each, the original stays put.
+const fsOf=it=>it.also?.length?[it.folder,...it.also]:[it.folder];
+const under=(x,f)=>x===f||x.startsWith(f+"/");
+const inF=(it,f)=>fsOf(it).some(x=>under(x,f));
+const gone=it=>fsOf(it).every(inArch);
+const save=()=>{if(eagleMode)return;if(dbxMode)return dbxSave();try{localStorage.setItem(KEY,JSON.stringify(items.map(it=>it.extra?{...it,blobUrl:null}:{id:it.id,tags:it.tags,favorite:it.favorite,folder:it.folder,trashed:it.trashed,also:it.also?.length?it.also:undefined,text:it.kind==="text"?it.text:undefined})))}catch(e){}};
 
 /* drawing demo artwork */
 function draw(ctx,it,W,H,t=0){
@@ -201,12 +206,14 @@ const VIEW_EXT=["jpg","jpeg","png","gif","webp","bmp","svg","avif","ico"],VID_EX
 function txtSize(t){const n=t.replace(/\s+/g,"").length;return n<=10?24:n<=25?19:n<=50?16:n<=100?13.5:11.5}
 function kindOf(ext){return ext==="gif"?"gif":VID_EXT.includes(ext)?"video":TXT_EXT.includes(ext)?"text":"image"}
 const metaOf=it=>it.kind==="url"?{name:it.name,url:it.url,folder:it.folder,tags:it.tags,favorite:it.favorite,trashed:it.trashed,addedAt:it.addedAt}:{tags:it.tags,favorite:it.favorite,trashed:it.trashed};
-const snap=new Map();let saveT=null;
+const snap=new Map(),lsnap=new Map();let saveT=null;
 function dbxSave(){
   if(!own)return;
   const t=Date.now();let ch=false;
   for(const it of items){const m=metaOf(it),j=JSON.stringify(m);if(snap.get(it.id)===j)continue;snap.set(it.id,j);
     if(it.kind==="url")own.urls[it.key]={...m,updatedAt:t};else own.items[it.id]={...m,updatedAt:t};ch=true}
+  for(const it of items){const j=JSON.stringify(it.also||[]);if((lsnap.get(it.id)||"[]")===j)continue;lsnap.set(it.id,j);
+    (own.links||={})[it.id]={folders:it.also||[],updatedAt:t};ch=true}
   if(ch){clearTimeout(saveT);saveT=setTimeout(flushSave,1500)}
 }
 function flushSave(){if(saveT==null)return;clearTimeout(saveT);saveT=null;$("sync").lastChild.textContent=L("保存中");
@@ -229,7 +236,7 @@ let FOLDER_IDS={};
 function loadCache(){
   try{const c=JSON.parse(localStorage.getItem(CACHE)||"null");if(!c)return false;
     dbxMode=true;items=c.items;FOLDERS=c.folders;FOLDER_IDS=c.folderIds||{};ARCH=new Set(c.arch||[]);TAGS.length=0;TAGS.push(...new Set(items.flatMap(i=>i.tags)));
-    snap.clear();items.forEach(it=>snap.set(it.id,JSON.stringify(metaOf(it))));return true}catch(e){return false}
+    snap.clear();lsnap.clear();items.forEach(it=>{snap.set(it.id,JSON.stringify(metaOf(it)));lsnap.set(it.id,JSON.stringify(it.also||[]))});return true}catch(e){return false}
 }
 const saveCache=()=>{try{localStorage.setItem(CACHE,JSON.stringify({items,folders:FOLDERS,folderIds:FOLDER_IDS,arch:[...ARCH]}))}catch(e){}};
 async function loadDropbox(keep=false){
@@ -242,13 +249,14 @@ async function loadDropbox(keep=false){
     const out=entries.filter(e=>e[".tag"]==="file").map(e=>{const x=ef.get(e.path_lower.normalize("NFC"));const it=dbxItem(e,meta.items[e.id]||x);if(x?.addedAt)it.addedAt=x.addedAt;return it});
     for(const u of em?.urls||[]){const k="eagle-"+u.addedAt+"-"+u.url;if(!meta.urls[k])meta.urls[k]={...u,updatedAt:0}}
     for(const [k,u] of Object.entries(meta.urls))if(!u.deleted)out.push({id:"url:"+k,key:k,name:u.name,folder:u.folder,kind:"url",url:u.url,tags:u.tags||[],favorite:!!u.favorite,trashed:!!u.trashed,addedAt:u.addedAt,w:0,h:0,dbx:true});
+    for(const it of out){const l=meta.links[it.id]?.folders?.filter(f=>f!==it.folder);if(l?.length)it.also=[...new Set(l)]}
     const oldRev=new Map(items.map(i=>[i.id,i.rev]));
     for(const it of out)if(oldRev.has(it.id)&&oldRev.get(it.id)!==it.rev){thumbCache.delete(it.id);thumbAsked.delete(it.id);previewP.delete(it.id);textMem.delete(it.id);posterMem.delete(it.id);posterP.delete(it.id)}
     dbxMode=true;eagleMode=false;dbxPending=false;items=out;
     const fe=entries.filter(e=>e[".tag"]==="folder");
     FOLDERS=fe.map(e=>e.path_display.slice(1)).sort((a,b)=>a.localeCompare(b,"ja"));FOLDER_IDS=Object.fromEntries(fe.map(e=>[e.id,e.path_display.slice(1)]));
     TAGS.length=0;TAGS.push(...new Set(out.flatMap(i=>i.tags)));
-    snap.clear();items.forEach(it=>snap.set(it.id,JSON.stringify(metaOf(it))));
+    snap.clear();lsnap.clear();items.forEach(it=>{snap.set(it.id,JSON.stringify(metaOf(it)));lsnap.set(it.id,JSON.stringify(it.also||[]))});
     if(!keep){st.view="all";st.folder=null;st.tag=null;st.q="";$("q").value="";st.sel.clear()}
     openFolderQ(true);
     saveCache();dbx.cachePrune(new Set([...out.map(i=>i.id),...ogpFiles.values()])).catch(()=>{});
@@ -264,14 +272,14 @@ const folderOpts=sel=>(dbxMode?["",...FOLDERS]:FOLDERS).map(f=>`<option value="$
 /* state */
 const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,tag:null,q:"",sort:"added-desc",type:"",sel:new Set(),selecting:false,anchor:null};
 let list=[];
-const qMatch=q=>it=>(it.name+" "+it.folder+" "+it.tags.join(" ")+" "+(it.url||"")).toLowerCase().includes(q);
+const qMatch=q=>it=>(it.name+" "+fsOf(it).join(" ")+" "+it.tags.join(" ")+" "+(it.url||"")).toLowerCase().includes(q);
 function filtered(){
   const q=st.q.trim().toLowerCase();
   const ia=!!st.folder&&inArch(st.folder);
-  let l=items.filter(it=>st.view==="trash"?it.trashed:!it.trashed&&(ia||!inArch(it.folder)));
+  let l=items.filter(it=>st.view==="trash"?it.trashed:!it.trashed&&(ia||!gone(it)));
   if(st.view==="fav")l=l.filter(it=>it.favorite);
   if(st.view==="url")l=l.filter(it=>it.kind==="url");
-  if(st.folder)l=l.filter(it=>it.folder===st.folder||it.folder.startsWith(st.folder+"/"));
+  if(st.folder)l=l.filter(it=>inF(it,st.folder));
   if(st.tag)l=l.filter(it=>it.tags.includes(st.tag));
   if(st.type)l=l.filter(it=>typeOf(it)===st.type);
   if(q)l=l.filter(qMatch(q));
@@ -285,7 +293,7 @@ const typeOf=it=>it.badge?"x:"+it.badge:it.kind;
 const TYPE_NAMES={image:L("画像"),gif:"GIF",video:L("動画"),text:L("テキスト"),url:"URL"};
 function renderTypes(){
   const ia=!!st.folder&&inArch(st.folder);
-  const cnt=new Map();items.forEach(i=>{if(!i.trashed&&(ia||!inArch(i.folder))){const t=typeOf(i);cnt.set(t,(cnt.get(t)||0)+1)}});
+  const cnt=new Map();items.forEach(i=>{if(!i.trashed&&(ia||!gone(i))){const t=typeOf(i);cnt.set(t,(cnt.get(t)||0)+1)}});
   if(st.type&&!cnt.has(st.type))cnt.set(st.type,0);
   const ks=Object.keys(TYPE_NAMES),ord=t=>{const i=ks.indexOf(t);return i<0?ks.length:i};
   const ts=[...cnt.keys()].sort((a,b)=>ord(a)-ord(b)||a.localeCompare(b));
@@ -300,7 +308,7 @@ document.querySelectorAll(".sh").forEach(b=>{const k=b.dataset.sec,apply=()=>{co
 function navBtn(label,n,on,fn,cls=""){const b=document.createElement("button");b.className=(on?"on ":"")+cls;b.innerHTML=`<span></span><span class="n">${n}</span>`;b.firstChild.textContent=label;b.onclick=()=>{fn();closeNav()};return b}
 function renderSide(){
   renderTypes();
-  const live=items.filter(i=>!i.trashed&&!inArch(i.folder));
+  const live=items.filter(i=>!i.trashed&&!gone(i));
   const lib=$("lib");lib.replaceChildren(
     navBtn(L("すべて"),live.length,st.view==="all"&&!st.folder&&!st.tag,()=>setView("all")),
     favBtn(navBtn(L("お気に入り"),live.filter(i=>i.favorite).length,st.view==="fav",()=>setView("fav"))),
@@ -313,7 +321,7 @@ function renderSide(){
   // Counts match what a folder click shows: the toolbar's type filter and search apply, and an archived subfolder
   // is left out of its parent's count unless the parent is archived too.
   const sq=st.q.trim().toLowerCase(),narrow=l=>{if(st.type)l=l.filter(i=>typeOf(i)===st.type);return sq?l.filter(qMatch(sq)):l};
-  const cnt=new Map();narrow(items.filter(i=>!i.trashed)).forEach(i=>{const a=i.folder.split("/"),ia=inArch(i.folder);a.forEach((_,k)=>{const q=a.slice(0,k+1).join("/");if(ia&&!inArch(q))return;cnt.set(q,(cnt.get(q)||0)+1)})});
+  const cnt=new Map();narrow(items.filter(i=>!i.trashed)).forEach(i=>{const s=new Set();for(const x of fsOf(i)){const a=x.split("/"),ia=inArch(x);a.forEach((_,k)=>{const q=a.slice(0,k+1).join("/");if(!(ia&&!inArch(q)))s.add(q)})}s.forEach(q=>cnt.set(q,(cnt.get(q)||0)+1))});
   const order=[...all].sort((a,b)=>{const x=a.split("/"),y=b.split("/");for(let i=0;i<Math.min(x.length,y.length);i++){if(x[i]!==y[i]){const ix=FOLDERS.findIndex(z=>z.split("/")[i]===x[i]),iy=FOLDERS.findIndex(z=>z.split("/")[i]===y[i]);return ix-iy||x[i].localeCompare(y[i],"ja")}}return x.length-y.length});
   const kids=new Set(order.filter(q=>q.includes("/")).map(q=>q.slice(0,q.lastIndexOf("/"))));
   const shown=q=>{const a=q.split("/");for(let i=1;i<a.length;i++)if(!fold.open.has(a.slice(0,i).join("/")))return false;return true};
@@ -418,7 +426,8 @@ function dbxLink(it){return it.link&&Date.now()<it.linkExp?Promise.resolve(it.li
 function renderSel(){
   const n=st.sel.size;$("selbar").hidden=!(n||st.selecting);$("selN").textContent=n;
   const tr=st.view==="trash";$("bRestore").hidden=!tr;$("bTrash").textContent=tr?L("ゴミ箱から削除"):L("ゴミ箱へ");
-  ["bFav","bTag","bMove"].forEach(x=>$(x).hidden=tr);
+  ["bFav","bTag","bMove","bLink"].forEach(x=>$(x).hidden=tr);
+  $("bUnlink").hidden=tr||!st.folder||!selItems().some(i=>i.also?.some(x=>under(x,st.folder)));
   if(dbxMode){$("bMove").hidden=true;$("bTrash").hidden=tr}else $("bTrash").hidden=false;
   $("selBtn").textContent=st.selecting?L("完了"):L("選択");
 }
@@ -529,7 +538,12 @@ $("bTag").onclick=()=>{const s=selItems();const cur=[...new Set(s.flatMap(i=>i.t
   formDlg(L("タグ"),`<input id="fTag" list="tagList" placeholder="${L("タグ名")}"><datalist id="tagList">${TAGS.map(t=>`<option value="${esc(t)}">`).join("")}</datalist><div class="tags" id="fCur"></div>`,L("追加"),()=>{const t=$("fTag").value.trim();if(!t)return;s.forEach(i=>{if(!i.tags.includes(t))i.tags.push(t)});save();render();toast(L("「{t}」を追加しました",{t}))},
   ()=>{for(const t of cur){const c=document.createElement("span");c.className="tag";c.textContent="# "+t;const x=document.createElement("button");x.type="button";x.textContent="✕";x.setAttribute("aria-label",L("タグを外す"));
     x.onclick=()=>{s.forEach(i=>i.tags=i.tags.filter(z=>z!==t));c.remove();save();render()};c.append(x);$("fCur").append(c)}})};
-$("bMove").onclick=()=>formDlg(L("移動"),`<select id="fFolder">${folderOpts()}</select>`,L("移動"),()=>{const f=$("fFolder").value;const s=selItems();s.forEach(i=>i.folder=f);st.sel.clear();save();render();toast(L("{n} 件を {f} へ移動しました",{n:s.length,f}))});
+$("bMove").onclick=()=>formDlg(L("移動"),`<select id="fFolder">${folderOpts()}</select>`,L("移動"),()=>{const f=$("fFolder").value;const s=selItems();s.forEach(i=>{i.folder=f;if(i.also){i.also=i.also.filter(x=>x!==f);if(!i.also.length)delete i.also}});st.sel.clear();save();render();toast(L("{n} 件を {f} へ移動しました",{n:s.length,f}))});
+// Link: also show the selected items in another folder, without copying or moving the files.
+$("bLink").onclick=()=>formDlg(L("リンク"),`<select id="fFolder">${FOLDERS.filter(f=>!inArch(f)).map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("")}</select>`,L("追加"),()=>{const f=$("fFolder").value;if(!f)return;
+  const s=selItems();s.forEach(i=>{if(i.folder!==f&&!i.also?.includes(f))i.also=[...(i.also||[]),f]});st.sel.clear();save();render();toast(L("{n} 件を {f} にリンクしました",{n:s.length,f}))});
+$("bUnlink").onclick=()=>{const f=st.folder,s=selItems().filter(i=>i.also?.some(x=>under(x,f)));s.forEach(i=>{i.also=i.also.filter(x=>!under(x,f));if(!i.also.length)delete i.also});
+  st.sel.clear();save();render();toast(L("{n} 件のリンクを外しました",{n:s.length}))};
 $("addBtn").onclick=()=>formDlg(L("追加"),`<select id="fKind"><option value="file">${L("ファイル（画像・動画・テキスト）")}</option><option value="url">URL</option>${EAGLE?`<option value="eagle">Eagleライブラリ（.library フォルダ）</option>`:""}</select><input id="fUrl" type="url" placeholder="https://" hidden><select id="fFolder">${folderOpts(st.folder)}</select>`,L("追加"),()=>{
   const f=$("fFolder").value;
   if($("fKind").value==="file"){pendingFolder=f;$("file").click();return}
@@ -867,6 +881,8 @@ function renderFoot(it){
   inp.onkeydown=e=>{e.stopPropagation();if(e.key==="Enter"&&inp.value.trim()){const t=inp.value.trim();if(!it.tags.includes(t))it.tags.push(t);save();renderFoot(it);renderSide();$("vTagInput").focus()}if(e.key==="Escape")inp.blur()};
   const p=document.createElement("span");p.className="path";p.textContent=`/${it.folder}${it.w?` · ${it.w}×${it.h}`:""}`;
   f.append(inp,dl,p);
+  for(const x of it.also||[]){const s=document.createElement("span");s.className="path lk";s.textContent="/"+x;const b=document.createElement("button");b.textContent="✕";b.setAttribute("aria-label",L("リンクを外す"));
+    b.onclick=()=>{it.also=it.also.filter(z=>z!==x);if(!it.also.length)delete it.also;save();renderFoot(it);renderSide()};s.append(b);f.append(s)}
 }
 function fitV(){if(!V.el||V.el===vt)return;const r=$("stage").getBoundingClientRect();V.fit=Math.min(r.width/V.w,r.height/V.h,1)*.96;V.z=V.fit;V.x=0;V.y=0;
   const e=V.enter;V.enter=null;if(!e||settle.busy)return applyV();

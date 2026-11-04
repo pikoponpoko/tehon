@@ -376,7 +376,9 @@ export interface ItemMeta { tags: string[]; favorite: boolean; trashed: boolean;
 export interface UrlMeta { name: string; url: string; folder: string; tags: string[]; favorite: boolean; trashed: boolean; deleted?: boolean; addedAt: number; updatedAt: number }
 /** Per-folder state, keyed by folder path. Archived folders are hidden from the library but kept in Dropbox. */
 export interface FolderMeta { archived: boolean; updatedAt: number }
-export interface DeviceFile { version: 1; device: string; items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders?: Record<string, FolderMeta> }
+/** Extra folders a file or URL is also shown in (a link; the original stays in its own folder), keyed by item id. */
+export interface LinkMeta { folders: string[]; updatedAt: number }
+export interface DeviceFile { version: 1; device: string; items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders?: Record<string, FolderMeta>; links?: Record<string, LinkMeta> }
 
 export function deviceId(): string {
   let d = localStorage.getItem("tehon-device");
@@ -387,12 +389,13 @@ export function deviceId(): string {
   return d;
 }
 
-export async function loadMeta(): Promise<{ items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders: Record<string, FolderMeta>; own: DeviceFile }> {
+export async function loadMeta(): Promise<{ items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders: Record<string, FolderMeta>; links: Record<string, LinkMeta>; own: DeviceFile }> {
   const me = deviceId();
   const own: DeviceFile = { version: 1, device: me, items: {}, urls: {} };
   const items: Record<string, ItemMeta> = {};
   const urls: Record<string, UrlMeta> = {};
   const folders: Record<string, FolderMeta> = {};
+  const links: Record<string, LinkMeta> = {};
   let files: FileMeta[] = [];
   try {
     files = (await rpc("files/list_folder", { path: META_DIR + "/devices" })).entries;
@@ -410,8 +413,9 @@ export async function loadMeta(): Promise<{ items: Record<string, ItemMeta>; url
     for (const [k, v] of Object.entries(d.items || {})) if (!items[k] || items[k].updatedAt < v.updatedAt) items[k] = v;
     for (const [k, v] of Object.entries(d.urls || {})) if (!urls[k] || urls[k].updatedAt < v.updatedAt) urls[k] = v;
     for (const [k, v] of Object.entries(d.folders || {})) if (!folders[k] || folders[k].updatedAt < v.updatedAt) folders[k] = v;
+    for (const [k, v] of Object.entries(d.links || {})) if (!links[k] || links[k].updatedAt < v.updatedAt) links[k] = v;
   }
-  return { items, urls, folders, own };
+  return { items, urls, folders, links, own };
 }
 
 export async function saveDevice(d: DeviceFile) {
