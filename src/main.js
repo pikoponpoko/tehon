@@ -249,7 +249,7 @@ async function loadDropbox(keep=false){
     FOLDERS=fe.map(e=>e.path_display.slice(1)).sort((a,b)=>a.localeCompare(b,"ja"));FOLDER_IDS=Object.fromEntries(fe.map(e=>[e.id,e.path_display.slice(1)]));
     TAGS.length=0;TAGS.push(...new Set(out.flatMap(i=>i.tags)));
     snap.clear();items.forEach(it=>snap.set(it.id,JSON.stringify(metaOf(it))));
-    if(!keep){st.view="all";st.folder=null;st.tag=null;st.q="";$("q").value="";st.sel.clear()}
+    if(!keep){st.view="all";st.folder=null;st.lib=null;st.tag=null;st.q="";$("q").value="";st.sel.clear()}
     openFolderQ(true);
     saveCache();dbx.cachePrune(new Set([...out.map(i=>i.id),...ogpFiles.values()])).catch(()=>{});
     $("sync").lastChild.textContent="Dropbox";$("toast").hidden=true;render();
@@ -262,16 +262,19 @@ async function loadDropbox(keep=false){
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
 const folderOpts=sel=>(dbxMode?["",...FOLDERS]:FOLDERS).map(f=>`<option value="${esc(f)}"${f===sel?" selected":""}>${f?esc(f):"/"}</option>`).join("");
 /* state */
-const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,tag:null,q:"",sort:"added-desc",type:"",sel:new Set(),selecting:false,anchor:null};
+// lib: the top-level folder (library, e.g. reference / idea) the user is in. Tags are listed and filtered within it.
+const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,lib:null,tag:null,q:"",sort:"added-desc",type:"",sel:new Set(),selecting:false,anchor:null};
 let list=[];
+const libOf=f=>f?f.split("/")[0]:null,inLib=lib=>it=>it.folder===lib||it.folder.startsWith(lib+"/");
 const qMatch=q=>it=>(it.name+" "+it.folder+" "+it.tags.join(" ")+" "+(it.url||"")+" "+(it.source||"")).toLowerCase().includes(q);
 function filtered(){
   const q=st.q.trim().toLowerCase();
-  const ia=!!st.folder&&inArch(st.folder);
+  const ia=!!(st.folder||st.lib)&&inArch(st.folder||st.lib);
   let l=items.filter(it=>st.view==="trash"?it.trashed:!it.trashed&&(ia||!inArch(it.folder)));
   if(st.view==="fav")l=l.filter(it=>it.favorite);
   if(st.view==="url")l=l.filter(it=>it.kind==="url");
   if(st.folder)l=l.filter(it=>it.folder===st.folder||it.folder.startsWith(st.folder+"/"));
+  else if(st.lib)l=l.filter(inLib(st.lib));
   if(st.tag)l=l.filter(it=>it.tags.includes(st.tag));
   if(st.type)l=l.filter(it=>typeOf(it)===st.type);
   if(q)l=l.filter(qMatch(q));
@@ -326,11 +329,13 @@ function renderSide(){
   $("archSec").hidden=!arch.length;const ar=$("arch");ar.replaceChildren();
   for(const q of arch){const b=navBtn(q,cnt.get(q)||0,st.folder===q,()=>setFolder(q));b.dataset.q=q;ar.append(b)}
   const tg=$("tags");tg.replaceChildren();
-  const tagAll=[...new Set(live.flatMap(i=>i.tags))].sort((a,b)=>a.localeCompare(b,"ja"));
-  const tc=new Map(tagAll.map(t=>[t,live.filter(i=>i.tags.includes(t)).length])),lo=Math.log(Math.min(...tc.values())),rg=Math.log(Math.max(...tc.values()))-lo||1;
-  // The number is what a tag click shows: every folder, narrowed only by the toolbar's type filter and search.
-  const tl=narrow(live);
-  for(const t of tagAll){const n=tc.get(t),b=navBtn(t,tl===live?n:tl.filter(i=>i.tags.includes(t)).length,st.tag===t,()=>setTag(t),"l"+(1+Math.floor((Math.log(n)-lo)/rg*3.999)));b.oncontextmenu=e=>{e.preventDefault();editTag(t)};b.ondblclick=()=>editTag(t);tg.append(b)}
+  // Inside a library only its own tags are listed.
+  const tp=st.lib?items.filter(i=>!i.trashed&&inLib(st.lib)(i)&&(inArch(st.lib)||!inArch(i.folder))):live;
+  const tagAll=[...new Set(tp.flatMap(i=>i.tags))].sort((a,b)=>a.localeCompare(b,"ja"));
+  const tc=new Map(tagAll.map(t=>[t,tp.filter(i=>i.tags.includes(t)).length])),lo=Math.log(Math.min(...tc.values())),rg=Math.log(Math.max(...tc.values()))-lo||1;
+  // The number is what a tag click shows: the whole library, narrowed only by the toolbar's type filter and search.
+  const tl=narrow(tp);
+  for(const t of tagAll){const n=tc.get(t),b=navBtn(t,tl===tp?n:tl.filter(i=>i.tags.includes(t)).length,st.tag===t,()=>setTag(t),"l"+(1+Math.floor((Math.log(n)-lo)/rg*3.999)));b.oncontextmenu=e=>{e.preventDefault();editTag(t)};b.ondblclick=()=>editTag(t);tg.append(b)}
 }
 // Rename (merging into an existing tag of the same name) or delete a tag on every item.
 function editTag(t){
@@ -345,7 +350,8 @@ function editTag(t){
 function folderDlg(q){const on=ARCH.has(q);
   formDlg(q.split("/").pop(),"",on?L("アーカイブから戻す"):L("アーカイブ"),()=>{
     on?ARCH.delete(q):ARCH.add(q);
-    if(!on&&st.folder&&(st.folder===q||st.folder.startsWith(q+"/")))st.folder=null;
+    if(!on&&st.folder&&(st.folder===q||st.folder.startsWith(q+"/"))){st.folder=null;st.lib=null}
+    if(!on&&st.lib===q){st.lib=null;st.tag=null}
     if(dbxMode&&own){own.folders=own.folders||{};own.folders[q]={archived:!on,updatedAt:Date.now()};clearTimeout(saveT);saveT=setTimeout(flushSave,1500);saveCache()}
     else try{localStorage.setItem(AKEY,JSON.stringify([...ARCH]))}catch(e){}
     st.sel.clear();render();toast(L(on?"「{t}」を戻しました":"「{t}」をアーカイブしました",{t:q.split("/").pop()}))})}
@@ -354,9 +360,10 @@ function folderDlg(q){const on=ARCH.has(q);
   ["pointerup","pointercancel","pointermove"].forEach(ev=>side.addEventListener(ev,e=>{if(ev==="pointermove"&&p0&&Math.hypot(e.clientX-p0[0],e.clientY-p0[1])<8)return;if(t!=="done")clearTimeout(t)}));
   side.addEventListener("click",e=>{if(t==="done"){t=null;e.stopImmediatePropagation()}},true);
   side.addEventListener("contextmenu",e=>{const b=e.target.closest("[data-q]");if(!b)return;e.preventDefault();if(t!=="done"){clearTimeout(t);folderDlg(b.dataset.q)}})}
-function setView(v){st.view=v;st.folder=null;st.tag=null;st.sel.clear();render()}
-function setFolder(f){st.view="all";st.tag=null;st.folder=st.folder===f?null:f;st.sel.clear();render()}
-function setTag(t){st.view="all";st.folder=null;st.tag=st.tag===t?null:t;st.sel.clear();render()}
+function setView(v){st.view=v;st.folder=null;st.lib=null;st.tag=null;st.sel.clear();render()}
+function setFolder(f){st.view="all";st.tag=null;st.folder=st.folder===f?null:f;st.lib=libOf(st.folder);st.sel.clear();render()}
+// A tag shows its items across the current library; clearing it goes back to the library's top folder.
+function setTag(t){st.view="all";st.folder=null;st.tag=st.tag===t?null:t;if(!st.tag&&st.lib)st.folder=st.lib;st.sel.clear();render()}
 function renderGrid(){
   list=filtered();
   const g=$("grid");liveIO?.disconnect();lazyEls=[];g.querySelectorAll("video").forEach(v=>{v.pause();v.removeAttribute("src");v.load()});g.replaceChildren();
@@ -692,7 +699,7 @@ async function importEagle(files){
   out.forEach(it=>{if(it.kind==="url"&&!it.url)it.kind="image";if(it.kind==="text"){it.badge=null;it.blobUrl=null;return}const src=it.thumbFile||(it.viewable&&it.kind!=="video"?it.file:null);it.blobUrl=src?URL.createObjectURL(src):null});
   if(out.some(i=>i.folder==="未分類"))paths.push("未分類");
   eagleMode=true;items=out;FOLDERS=paths;TAGS.length=0;TAGS.push(...new Set(out.flatMap(i=>i.tags)));
-  st.view="all";st.folder=null;st.tag=null;st.q="";$("q").value="";st.sel.clear();
+  st.view="all";st.folder=null;st.lib=null;st.tag=null;st.q="";$("q").value="";st.sel.clear();
   $("sync").lastChild.textContent="Eagle";
   render();toast(`${out.length} 件を読み込みました${bad?`（${bad} 件は読み込めませんでした）`:""}。変更は保存されません`);
 }
@@ -950,7 +957,7 @@ try{FOLDER_Q?sessionStorage.setItem("tehon-folder-q",FOLDER_Q):FOLDER_Q=sessionS
 function openFolderQ(final){
   if(!FOLDER_Q)return;
   const p=FOLDER_Q.replace(/^\/+|\/+$/g,"").toLowerCase(),f=FOLDER_Q.startsWith("id:")?FOLDER_IDS[FOLDER_Q]:FOLDERS.find(x=>x.toLowerCase()===p);
-  if(f!=null){st.view="all";st.folder=f;st.tag=null;st.q="";$("q").value="";st.sel.clear();
+  if(f!=null){st.view="all";st.folder=f;st.lib=libOf(f);st.tag=null;st.q="";$("q").value="";st.sel.clear();
     const a=f.split("/");for(let i=1;i<a.length;i++)fold.open.add(a.slice(0,i).join("/"));
     if(fold.sec.folders){fold.sec.folders=false;const h=document.querySelector('.sh[data-sec="folders"]');h.setAttribute("aria-expanded",true);h.closest(".sec").classList.remove("shut")}saveFold()}
   else if(!final)return;
