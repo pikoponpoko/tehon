@@ -692,6 +692,9 @@ const closeNav=()=>$("app").classList.remove("nav-open");
 const wide=matchMedia("(min-width:761px)");
 function toggleSide(){if(!wide.matches)return $("app").classList.toggle("nav-open");const c=$("app").classList.toggle("collapsed");try{localStorage.setItem("tehon-side",c?"0":"1")}catch(e){}}
 $("menuBtn").onclick=toggleSide;
+function toggleBar(){const c=document.querySelector("main").classList.toggle("barless");try{localStorage.setItem("tehon-bar",c?"0":"1")}catch(e){}}
+$("barBtn").onclick=$("barOpen").onclick=toggleBar;
+try{if(localStorage.getItem("tehon-bar")==="0")document.querySelector("main").classList.add("barless")}catch(e){}
 try{if(localStorage.getItem("tehon-side")==="0")$("app").classList.add("collapsed")}catch(e){}
 $("scrim").onclick=closeNav;
 
