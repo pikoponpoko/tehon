@@ -376,7 +376,11 @@ export interface ItemMeta { tags: string[]; favorite: boolean; trashed: boolean;
 export interface UrlMeta { name: string; url: string; folder: string; tags: string[]; favorite: boolean; trashed: boolean; deleted?: boolean; addedAt: number; updatedAt: number }
 /** Per-folder state, keyed by folder path. Archived folders are hidden from the library but kept in Dropbox. */
 export interface FolderMeta { archived: boolean; updatedAt: number }
-export interface DeviceFile { version: 1; device: string; items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders?: Record<string, FolderMeta> }
+/** Kanban status of an item (file id, or "url:" + key for URLs); s null = no status. Kept apart from items so their shape stays as it is. */
+export interface StatusMeta { s: string | null; updatedAt: number }
+/** The user's statuses, in column order. "No status" is not in the list. */
+export interface StatusList { list: { id: string; name: string }[]; updatedAt: number }
+export interface DeviceFile { version: 1; device: string; items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders?: Record<string, FolderMeta>; status?: Record<string, StatusMeta>; statuses?: StatusList }
 
 export function deviceId(): string {
   let d = localStorage.getItem("tehon-device");
@@ -387,12 +391,14 @@ export function deviceId(): string {
   return d;
 }
 
-export async function loadMeta(): Promise<{ items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders: Record<string, FolderMeta>; own: DeviceFile }> {
+export async function loadMeta(): Promise<{ items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders: Record<string, FolderMeta>; status: Record<string, StatusMeta>; statuses: StatusList | null; own: DeviceFile }> {
   const me = deviceId();
   const own: DeviceFile = { version: 1, device: me, items: {}, urls: {} };
   const items: Record<string, ItemMeta> = {};
   const urls: Record<string, UrlMeta> = {};
   const folders: Record<string, FolderMeta> = {};
+  const status: Record<string, StatusMeta> = {};
+  let statuses: StatusList | null = null;
   let files: FileMeta[] = [];
   try {
     files = (await rpc("files/list_folder", { path: META_DIR + "/devices" })).entries;
@@ -410,8 +416,10 @@ export async function loadMeta(): Promise<{ items: Record<string, ItemMeta>; url
     for (const [k, v] of Object.entries(d.items || {})) if (!items[k] || items[k].updatedAt < v.updatedAt) items[k] = v;
     for (const [k, v] of Object.entries(d.urls || {})) if (!urls[k] || urls[k].updatedAt < v.updatedAt) urls[k] = v;
     for (const [k, v] of Object.entries(d.folders || {})) if (!folders[k] || folders[k].updatedAt < v.updatedAt) folders[k] = v;
+    for (const [k, v] of Object.entries(d.status || {})) if (!status[k] || status[k].updatedAt < v.updatedAt) status[k] = v;
+    if (d.statuses && (!statuses || statuses.updatedAt < d.statuses.updatedAt)) statuses = d.statuses;
   }
-  return { items, urls, folders, own };
+  return { items, urls, folders, status, statuses, own };
 }
 
 export async function saveDevice(d: DeviceFile) {

@@ -39,6 +39,10 @@ const EN={
   "アップロード中 {i} / {n}":"Uploading {i} / {n}","読み込み中 {n} 件":"Loading {n}",
   "Dropboxに保存できませんでした":"Couldn't save to Dropbox","Dropboxに再接続してください":"Reconnect Dropbox","Dropboxを読み込めませんでした":"Couldn't load Dropbox",
   "Dropboxに接続できませんでした":"Couldn't connect to Dropbox",
+  // status (kanban)
+  "ステータス":"Status","カンバン":"Kanban","未指定":"No status","作業中":"In progress","発表済み":"Published",
+  "ステータスを追加":"Add status","ステータスを編集":"Edit status","ステータス名":"Status name",
+  "{n} 件は未指定になります。":"{n|item} will have no status.","{n} 件を「{t}」にしました":"Set {n|item} to \"{t}\"",
   // settings
   "カラーテーマ":"Color theme","自動":"Auto","ライト":"Light","ダーク":"Dark","テーマを読み込む（.json）":"Load theme (.json)",
   "ビューアの背景":"Viewer background","ファイル名":"File names","表示":"Show","非表示":"Hide","切断":"Disconnect","接続":"Connect",
