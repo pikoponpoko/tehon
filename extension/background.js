@@ -14,7 +14,7 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== "save-image" || !info.srcUrl) return;
   const { last = { folder: "", tags: [] } } = await chrome.storage.local.get("last");
-  enqueue({ tabId: tab?.id, items: [{ url: info.srcUrl }], folder: last.folder, tags: last.tags });
+  enqueue({ tabId: tab?.id, page: info.pageUrl || tab?.url, items: [{ url: info.srcUrl }], folder: last.folder, tags: last.tags });
 });
 
 chrome.runtime.onMessage.addListener((m, _sender, reply) => {
@@ -80,10 +80,12 @@ async function publish() {
 }
 
 // items: { url } for an image, { vid, url? } for a video (url when it can be downloaded as a file).
-function enqueue({ tabId, items, folder, tags }) {
+// page: the tab's address, kept as the file's source.
+function enqueue({ tabId, page, items, folder, tags }) {
   if (!job || job.done + job.failed === job.total) job = { total: 0, done: 0, failed: 0 };
   job.total += items.length;
-  for (const it of items) queue.push({ tabId, ...it, folder, tags });
+  if (!/^https?:/.test(page || "")) page = null;
+  for (const it of items) queue.push({ tabId, page, ...it, folder, tags });
   publish();
   if (!running) run();
 }
@@ -105,7 +107,7 @@ async function run() {
         if (t.vid) (job.recording = true), await publish();
         const { blob, name } = t.vid ? await getVideo(t) : await fetchImage(t.url, t.tabId).then(b => ({ blob: b, name: fileName(t.url, b.type) }));
         const meta = await dbx.upload(t.folder, name, blob);
-        saved.push({ id: meta.id, tags: t.tags });
+        saved.push({ id: meta.id, tags: t.tags, page: t.page });
         job.done++;
       } catch {
         job.failed++;
@@ -117,10 +119,13 @@ async function run() {
   try {
     await Promise.all([worker(false), worker(false), worker(false), worker(true)]);
     const tagged = saved.filter(s => s.tags.length);
-    if (tagged.length) {
+    const sourced = saved.filter(s => s.page);
+    if (tagged.length || sourced.length) {
       const now = Date.now();
       await dbx.updateDevice(d => {
         for (const s of tagged) d.items[s.id] = { tags: s.tags, favorite: false, trashed: false, updatedAt: now };
+        d.sources ||= {};
+        for (const s of sourced) d.sources[s.id] = { url: s.page, updatedAt: now };
       });
     }
   } catch {

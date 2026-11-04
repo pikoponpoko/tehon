@@ -376,7 +376,9 @@ export interface ItemMeta { tags: string[]; favorite: boolean; trashed: boolean;
 export interface UrlMeta { name: string; url: string; folder: string; tags: string[]; favorite: boolean; trashed: boolean; deleted?: boolean; addedAt: number; updatedAt: number }
 /** Per-folder state, keyed by folder path. Archived folders are hidden from the library but kept in Dropbox. */
 export interface FolderMeta { archived: boolean; updatedAt: number }
-export interface DeviceFile { version: 1; device: string; items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders?: Record<string, FolderMeta> }
+/** Web page a file was saved from, keyed by file id. Kept apart from `items`, whose shape Soku Conte reads. */
+export interface SourceMeta { url: string; updatedAt: number }
+export interface DeviceFile { version: 1; device: string; items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders?: Record<string, FolderMeta>; sources?: Record<string, SourceMeta> }
 
 export function deviceId(): string {
   let d = localStorage.getItem("tehon-device");
@@ -387,12 +389,13 @@ export function deviceId(): string {
   return d;
 }
 
-export async function loadMeta(): Promise<{ items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders: Record<string, FolderMeta>; own: DeviceFile }> {
+export async function loadMeta(): Promise<{ items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders: Record<string, FolderMeta>; sources: Record<string, SourceMeta>; own: DeviceFile }> {
   const me = deviceId();
   const own: DeviceFile = { version: 1, device: me, items: {}, urls: {} };
   const items: Record<string, ItemMeta> = {};
   const urls: Record<string, UrlMeta> = {};
   const folders: Record<string, FolderMeta> = {};
+  const sources: Record<string, SourceMeta> = {};
   let files: FileMeta[] = [];
   try {
     files = (await rpc("files/list_folder", { path: META_DIR + "/devices" })).entries;
@@ -410,8 +413,9 @@ export async function loadMeta(): Promise<{ items: Record<string, ItemMeta>; url
     for (const [k, v] of Object.entries(d.items || {})) if (!items[k] || items[k].updatedAt < v.updatedAt) items[k] = v;
     for (const [k, v] of Object.entries(d.urls || {})) if (!urls[k] || urls[k].updatedAt < v.updatedAt) urls[k] = v;
     for (const [k, v] of Object.entries(d.folders || {})) if (!folders[k] || folders[k].updatedAt < v.updatedAt) folders[k] = v;
+    for (const [k, v] of Object.entries(d.sources || {})) if (!sources[k] || sources[k].updatedAt < v.updatedAt) sources[k] = v;
   }
-  return { items, urls, folders, own };
+  return { items, urls, folders, sources, own };
 }
 
 export async function saveDevice(d: DeviceFile) {
@@ -471,12 +475,16 @@ export async function remove(path: string) {
   await rpc("files/delete_v2", { path });
 }
 
-/** Tags etc. carried over from Eagle, keyed by file path (/.tehon/eagle-manifest.json). Device data overrides it. */
-export interface EagleManifest { files: Record<string, { tags: string[]; favorite: boolean; trashed: boolean; addedAt?: number }>; urls: Omit<UrlMeta, "updatedAt">[] }
+/** Tags etc. carried over from Eagle, keyed by file path (/.tehon/eagle-manifest.json). Device data overrides it.
+ *  Source page URLs are in /.tehon/eagle-sources.json ({ path: url }) and are merged in as `url`. */
+export interface EagleManifest { files: Record<string, { tags: string[]; favorite: boolean; trashed: boolean; addedAt?: number; url?: string }>; urls: Omit<UrlMeta, "updatedAt">[] }
 export async function loadEagleManifest(): Promise<EagleManifest | null> {
-  try {
-    return await readJson(META_DIR + "/eagle-manifest.json");
-  } catch {
-    return null;
-  }
+  const [m, src] = await Promise.all([
+    readJson<EagleManifest>(META_DIR + "/eagle-manifest.json").catch(() => null),
+    readJson<Record<string, string>>(META_DIR + "/eagle-sources.json").catch(() => null),
+  ]);
+  if (!m && !src) return null;
+  const out: EagleManifest = m || { files: {}, urls: [] };
+  for (const [k, url] of Object.entries(src || {})) out.files[k] = { ...(out.files[k] || { tags: [], favorite: false, trashed: false }), url };
+  return out;
 }

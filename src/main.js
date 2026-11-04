@@ -239,7 +239,7 @@ async function loadDropbox(keep=false){
     ogpFiles=new Map(og.filter(e=>e[".tag"]==="file").map(e=>[e.name,e.id]));
     own=meta.own;ARCH=new Set(Object.entries(meta.folders).filter(([,v])=>v.archived).map(([k])=>k));
     const ef=new Map(Object.entries(em?.files||{}).map(([k,v])=>[k.normalize("NFC").toLowerCase(),v]));
-    const out=entries.filter(e=>e[".tag"]==="file").map(e=>{const x=ef.get(e.path_lower.normalize("NFC"));const it=dbxItem(e,meta.items[e.id]||x);if(x?.addedAt)it.addedAt=x.addedAt;return it});
+    const out=entries.filter(e=>e[".tag"]==="file").map(e=>{const x=ef.get(e.path_lower.normalize("NFC"));const it=dbxItem(e,meta.items[e.id]||x);if(x?.addedAt)it.addedAt=x.addedAt;it.source=meta.sources[e.id]?.url||x?.url||null;return it});
     for(const u of em?.urls||[]){const k="eagle-"+u.addedAt+"-"+u.url;if(!meta.urls[k])meta.urls[k]={...u,updatedAt:0}}
     for(const [k,u] of Object.entries(meta.urls))if(!u.deleted)out.push({id:"url:"+k,key:k,name:u.name,folder:u.folder,kind:"url",url:u.url,tags:u.tags||[],favorite:!!u.favorite,trashed:!!u.trashed,addedAt:u.addedAt,w:0,h:0,dbx:true});
     const oldRev=new Map(items.map(i=>[i.id,i.rev]));
@@ -266,7 +266,7 @@ const folderOpts=sel=>(dbxMode?["",...FOLDERS]:FOLDERS).map(f=>`<option value="$
 const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,lib:null,tag:null,q:"",sort:"added-desc",type:"",sel:new Set(),selecting:false,anchor:null};
 let list=[];
 const libOf=f=>f?f.split("/")[0]:null,inLib=lib=>it=>it.folder===lib||it.folder.startsWith(lib+"/");
-const qMatch=q=>it=>(it.name+" "+it.folder+" "+it.tags.join(" ")+" "+(it.url||"")).toLowerCase().includes(q);
+const qMatch=q=>it=>(it.name+" "+it.folder+" "+it.tags.join(" ")+" "+(it.url||"")+" "+(it.source||"")).toLowerCase().includes(q);
 function filtered(){
   const q=st.q.trim().toLowerCase();
   const ia=!!(st.folder||st.lib)&&inArch(st.folder||st.lib);
@@ -690,7 +690,7 @@ async function importEagle(files){
         const th=fl.find(f=>f.name.endsWith("_thumbnail.png"));const orig=fl.find(f=>f!==mf&&f!==th&&f.name!=="metadata.json");
         const kind=ext==="url"?"url":ext==="gif"?"gif":VIDEO.includes(ext)?"video":TEXT.includes(ext)?"text":"image";
         out.push({id:"id:eagle"+m.id,name:m.name+(ext&&ext!=="url"?"."+ext:""),folder:fmap.get((m.folders||[])[0])||"未分類",kind,badge:kind==="image"&&!VIEWABLE.includes(ext)?ext:null,
-          tags:m.tags||[],favorite:(m.star||0)>0,star:m.star||0,url:m.url||null,w:m.width||0,h:m.height||0,addedAt:m.btime||m.modificationTime||0,trashed:!!m.isDeleted,
+          tags:m.tags||[],favorite:(m.star||0)>0,star:m.star||0,url:m.url||null,source:ext!=="url"&&m.url||null,w:m.width||0,h:m.height||0,addedAt:m.btime||m.modificationTime||0,trashed:!!m.isDeleted,
           local:true,file:orig,thumbFile:th,viewable:VIEWABLE.includes(ext)||VIDEO.includes(ext)});
       }catch(e){bad++}
     }));
@@ -704,16 +704,17 @@ async function importEagle(files){
   render();toast(`${out.length} 件を読み込みました${bad?`（${bad} 件は読み込めませんでした）`:""}。変更は保存されません`);
 }
 $("file").onchange=e=>{addFiles([...e.target.files],pendingFolder);e.target.value=""};
-async function uploadFiles(files,folder){
+async function uploadFiles(files,folder,pageUrl){
   folder=folder??st.folder??"";let n=0,bad=0;
   for(const f of files){
     toast(L("アップロード中 {i} / {n}",{i:n+bad+1,n:files.length}));
-    try{const e=await dbx.upload(folder,f);const it=dbxItem(e,null);it.addedAt=Date.now();items.unshift(it);snap.set(it.id,JSON.stringify(metaOf(it)));n++}catch(e){bad++}
+    try{const e=await dbx.upload(folder,f);const it=dbxItem(e,null);it.addedAt=Date.now();items.unshift(it);snap.set(it.id,JSON.stringify(metaOf(it)));n++
+      if(pageUrl&&own){it.source=pageUrl;(own.sources||={})[it.id]={url:pageUrl,updatedAt:Date.now()};clearTimeout(saveT);saveT=setTimeout(flushSave,1500)}}catch(e){bad++}
   }
   render();toast(L("{n} 件を追加しました",{n})+(bad?L("（{n} 件はアップロードできませんでした）",{n:bad}):""));
 }
-function addFiles(files,folder){
-  if(dbxMode)return uploadFiles(files,folder);
+function addFiles(files,folder,source){
+  if(dbxMode)return uploadFiles(files,folder,source);
   folder=folder||st.folder||FOLDERS[0]||"";let n=0;
   for(const f of files){
     const kind=f.type.startsWith("video/")?"video":f.type==="image/gif"?"gif":f.type.startsWith("image/")?"image":(f.type.startsWith("text/")||/\.(txt|md)$/i.test(f.name))?"text":null;if(!kind)continue;
@@ -874,6 +875,7 @@ function renderFoot(it){
   inp.onkeydown=e=>{e.stopPropagation();if(e.key==="Enter"&&inp.value.trim()){const t=inp.value.trim();if(!it.tags.includes(t))it.tags.push(t);save();renderFoot(it);renderSide();$("vTagInput").focus()}if(e.key==="Escape")inp.blur()};
   const p=document.createElement("span");p.className="path";p.textContent=`/${it.folder}${it.w?` · ${it.w}×${it.h}`:""}`;
   f.append(inp,dl,p);
+  if(it.source&&/^https?:\/\//.test(it.source)){const a=document.createElement("a");a.className="src";a.href=it.source;a.target="_blank";a.rel="noopener noreferrer";a.title=it.source;let t=it.source;try{t=decodeURI(t)}catch{}a.textContent=t.replace(/^https?:\/\/(www\.)?/,"").replace(/\/$/,"");f.append(a)}
 }
 function fitV(){if(!V.el||V.el===vt)return;const r=$("stage").getBoundingClientRect();V.fit=Math.min(r.width/V.w,r.height/V.h,1)*.96;V.z=V.fit;V.x=0;V.y=0;
   const e=V.enter;V.enter=null;if(!e||settle.busy)return applyV();
@@ -987,7 +989,7 @@ async function takeShared(){
   const what=files.length?files.map(f=>f.name).join("\n"):url;
   formDlg(L("追加"),`<div class="msg" style="color:var(--muted);font-size:13px;white-space:pre-line;overflow-wrap:anywhere;max-height:30vh;overflow:auto"></div>${dbxMode||FOLDERS.length?`<select id="fFolder">${folderOpts(st.folder)}</select>`:""}`,L("追加"),()=>{
     const f=$("fFolder")?.value??"";
-    if(files.length)return addFiles(files,f);
+    if(files.length)return addFiles(files,f,url);
     addUrl(url,f,meta.title.trim()||null);render();toast(L("URLを追加しました"));
   });
   $("dlgForm").querySelector(".msg").textContent=what;
