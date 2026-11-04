@@ -310,7 +310,10 @@ function renderSide(){
   const all=new Set();FOLDERS.forEach(x=>{const a=x.split("/");a.forEach((_,i)=>all.add(a.slice(0,i+1).join("/")))});
   const arch=[...ARCH].filter(q=>all.has(q)&&![...ARCH].some(a=>q.startsWith(a+"/"))).sort((a,b)=>a.localeCompare(b,"ja"));
   [...all].forEach(q=>{if(inArch(q))all.delete(q)});
-  const cnt=new Map();items.filter(i=>!i.trashed).forEach(i=>{const a=i.folder.split("/");a.forEach((_,k)=>{const q=a.slice(0,k+1).join("/");cnt.set(q,(cnt.get(q)||0)+1)})});
+  // Counts match what a folder click shows: the toolbar's type filter and search apply, and an archived subfolder
+  // is left out of its parent's count unless the parent is archived too.
+  const sq=st.q.trim().toLowerCase(),narrow=l=>{if(st.type)l=l.filter(i=>typeOf(i)===st.type);return sq?l.filter(qMatch(sq)):l};
+  const cnt=new Map();narrow(items.filter(i=>!i.trashed)).forEach(i=>{const a=i.folder.split("/"),ia=inArch(i.folder);a.forEach((_,k)=>{const q=a.slice(0,k+1).join("/");if(ia&&!inArch(q))return;cnt.set(q,(cnt.get(q)||0)+1)})});
   const order=[...all].sort((a,b)=>{const x=a.split("/"),y=b.split("/");for(let i=0;i<Math.min(x.length,y.length);i++){if(x[i]!==y[i]){const ix=FOLDERS.findIndex(z=>z.split("/")[i]===x[i]),iy=FOLDERS.findIndex(z=>z.split("/")[i]===y[i]);return ix-iy||x[i].localeCompare(y[i],"ja")}}return x.length-y.length});
   const kids=new Set(order.filter(q=>q.includes("/")).map(q=>q.slice(0,q.lastIndexOf("/"))));
   const shown=q=>{const a=q.split("/");for(let i=1;i<a.length;i++)if(!fold.open.has(a.slice(0,i).join("/")))return false;return true};
@@ -326,7 +329,7 @@ function renderSide(){
   const tagAll=[...new Set(live.flatMap(i=>i.tags))].sort((a,b)=>a.localeCompare(b,"ja"));
   const tc=new Map(tagAll.map(t=>[t,live.filter(i=>i.tags.includes(t)).length])),lo=Math.log(Math.min(...tc.values())),rg=Math.log(Math.max(...tc.values()))-lo||1;
   // The number is what a tag click shows: every folder, narrowed only by the toolbar's type filter and search.
-  const q=st.q.trim().toLowerCase();let tl=st.type?live.filter(i=>typeOf(i)===st.type):live;if(q)tl=tl.filter(qMatch(q));
+  const tl=narrow(live);
   for(const t of tagAll){const n=tc.get(t),b=navBtn(t,tl===live?n:tl.filter(i=>i.tags.includes(t)).length,st.tag===t,()=>setTag(t),"l"+(1+Math.floor((Math.log(n)-lo)/rg*3.999)));b.oncontextmenu=e=>{e.preventDefault();editTag(t)};b.ondblclick=()=>editTag(t);tg.append(b)}
 }
 // Rename (merging into an existing tag of the same name) or delete a tag on every item.
@@ -352,7 +355,7 @@ function folderDlg(q){const on=ARCH.has(q);
   side.addEventListener("click",e=>{if(t==="done"){t=null;e.stopImmediatePropagation()}},true);
   side.addEventListener("contextmenu",e=>{const b=e.target.closest("[data-q]");if(!b)return;e.preventDefault();if(t!=="done"){clearTimeout(t);folderDlg(b.dataset.q)}})}
 function setView(v){st.view=v;st.folder=null;st.tag=null;st.sel.clear();render()}
-function setFolder(f){st.view="all";st.folder=st.folder===f?null:f;st.sel.clear();render()}
+function setFolder(f){st.view="all";st.tag=null;st.folder=st.folder===f?null:f;st.sel.clear();render()}
 function setTag(t){st.view="all";st.folder=null;st.tag=st.tag===t?null:t;st.sel.clear();render()}
 function renderGrid(){
   list=filtered();
