@@ -260,6 +260,7 @@ const folderOpts=sel=>(dbxMode?["",...FOLDERS]:FOLDERS).map(f=>`<option value="$
 /* state */
 const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,tag:null,q:"",sort:"added-desc",type:"",sel:new Set(),selecting:false,anchor:null};
 let list=[];
+const qMatch=q=>it=>(it.name+" "+it.folder+" "+it.tags.join(" ")+" "+(it.url||"")).toLowerCase().includes(q);
 function filtered(){
   const q=st.q.trim().toLowerCase();
   let l=items.filter(it=>st.view==="trash"?it.trashed:!it.trashed);
@@ -268,7 +269,7 @@ function filtered(){
   if(st.folder)l=l.filter(it=>it.folder===st.folder||it.folder.startsWith(st.folder+"/"));
   if(st.tag)l=l.filter(it=>it.tags.includes(st.tag));
   if(st.type)l=l.filter(it=>typeOf(it)===st.type);
-  if(q)l=l.filter(it=>(it.name+" "+it.folder+" "+it.tags.join(" ")+" "+(it.url||"")).toLowerCase().includes(q));
+  if(q)l=l.filter(qMatch(q));
   if(st.sort==="random"){const r=x=>{let h=st.rseed;for(const c of x.id)h=Math.imul(h^c.charCodeAt(0),2654435761);return h>>>0};return l.sort((x,y)=>r(x)-r(y))}
   const [k,d]=st.sort.split("-");
   l.sort((x,y)=>k==="name"?x.name.localeCompare(y.name,"ja"):k==="kind"?x.kind.localeCompare(y.kind)||y.addedAt-x.addedAt:(d==="asc"?x.addedAt-y.addedAt:y.addedAt-x.addedAt));
@@ -313,7 +314,9 @@ function renderSide(){
   const tg=$("tags");tg.replaceChildren();
   const tagAll=[...new Set(live.flatMap(i=>i.tags))].sort((a,b)=>a.localeCompare(b,"ja"));
   const tc=new Map(tagAll.map(t=>[t,live.filter(i=>i.tags.includes(t)).length])),lo=Math.log(Math.min(...tc.values())),rg=Math.log(Math.max(...tc.values()))-lo||1;
-  for(const t of tagAll){const n=tc.get(t),b=navBtn(t,n,st.tag===t,()=>setTag(t),"l"+(1+Math.floor((Math.log(n)-lo)/rg*3.999)));b.oncontextmenu=e=>{e.preventDefault();editTag(t)};b.ondblclick=()=>editTag(t);tg.append(b)}
+  // The number is what a tag click shows: every folder, narrowed only by the toolbar's type filter and search.
+  const q=st.q.trim().toLowerCase();let tl=st.type?live.filter(i=>typeOf(i)===st.type):live;if(q)tl=tl.filter(qMatch(q));
+  for(const t of tagAll){const n=tc.get(t),b=navBtn(t,tl===live?n:tl.filter(i=>i.tags.includes(t)).length,st.tag===t,()=>setTag(t),"l"+(1+Math.floor((Math.log(n)-lo)/rg*3.999)));b.oncontextmenu=e=>{e.preventDefault();editTag(t)};b.ondblclick=()=>editTag(t);tg.append(b)}
 }
 // Rename (merging into an existing tag of the same name) or delete a tag on every item.
 function editTag(t){
@@ -326,7 +329,7 @@ function editTag(t){
 }
 function setView(v){st.view=v;st.folder=null;st.tag=null;st.sel.clear();render()}
 function setFolder(f){st.view="all";st.folder=st.folder===f?null:f;st.sel.clear();render()}
-function setTag(t){if(st.view==="trash")st.view="all";st.tag=st.tag===t?null:t;st.sel.clear();render()}
+function setTag(t){st.view="all";st.folder=null;st.tag=st.tag===t?null:t;st.sel.clear();render()}
 function renderGrid(){
   list=filtered();
   const g=$("grid");liveIO?.disconnect();lazyEls=[];g.querySelectorAll("video").forEach(v=>{v.pause();v.removeAttribute("src");v.load()});g.replaceChildren();
@@ -457,8 +460,8 @@ document.addEventListener("keydown",e=>{
 });
 
 /* toolbar */
-$("q").oninput=e=>{st.q=e.target.value;renderGrid()};
-$("type").onchange=e=>{st.type=e.target.value;$("typeW").classList.toggle("on",!!st.type);renderGrid();$("wrap").scrollTop=0};
+$("q").oninput=e=>{st.q=e.target.value;renderSide();renderGrid()};
+$("type").onchange=e=>{st.type=e.target.value;$("typeW").classList.toggle("on",!!st.type);renderSide();renderGrid();$("wrap").scrollTop=0};
 $("sort").onchange=e=>{st.sort=e.target.value;if(st.sort==="random")st.rseed=Date.now()|0;$("shuffle").hidden=st.sort!=="random";renderGrid();$("wrap").scrollTop=0};
 $("shuffle").onclick=()=>{st.rseed=(Date.now()^Math.random()*1e9)|0;renderGrid();$("wrap").scrollTop=0};
 function setLayout(l){const ch=st.layout!==l;st.layout=l;$("grid").classList.toggle("fall",l==="fall");if(ch&&list.length)renderGrid();$("lGrid").classList.toggle("on",l==="grid");$("lFall").classList.toggle("on",l==="fall");try{localStorage.setItem("tehon-layout",l)}catch(e){}}
