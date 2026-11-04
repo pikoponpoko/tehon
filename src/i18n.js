@@ -7,12 +7,12 @@ export const LANG=p==="ja"||p==="en"?p:/^ja\b/i.test((navigator.languages&&navig
 
 const EN={
   // sidebar, toolbar
-  "未接続":"Not connected","設定":"Settings","フォルダ":"Folders","タグ":"Tags","メニュー":"Menu","検索":"Search",
+  "未接続":"Not connected","設定":"Settings","フォルダ":"Folders","タグ":"Tags","メニュー":"Menu","検索":"Search","ツールバーを畳む":"Hide toolbar","ツールバーを開く":"Show toolbar",
   "種類":"Type","すべての種類":"All types","並べ替え":"Sort","追加日（新しい順）":"Date added (newest)","追加日（古い順）":"Date added (oldest)",
   "名前":"Name","ランダム":"Random","シャッフル":"Shuffle","レイアウト":"Layout","グリッド":"Grid","ウォーターフォール":"Waterfall","列数":"Columns",
   "選択":"Select","完了":"Done","＋ 追加":"＋ Add","更新":"Update","件選択":"selected","お気に入り":"Favorites","タグを追加":"Add tag","移動":"Move",
   "ゴミ箱へ":"Move to Trash","ゴミ箱から削除":"Delete from Trash","元に戻す":"Restore","すべて選択":"Select all","解除":"Deselect",
-  "すべて":"All","ゴミ箱":"Trash","プレビュー":"Preview",
+  "フォルダが見つかりません":"Folder not found","すべて":"All","ゴミ箱":"Trash","プレビュー":"Preview",
   "アーカイブ":"Archive","アーカイブから戻す":"Unarchive","「{t}」をアーカイブしました":"Archived \"{t}\"","「{t}」を戻しました":"Unarchived \"{t}\"",
   "保存中":"Saving","未保存":"Not saved","読み込み中":"Loading",
   // viewer

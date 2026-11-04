@@ -5,7 +5,7 @@ const $ = id => document.getElementById(id);
 const send = m => chrome.runtime.sendMessage(m);
 const splitTags = s => [...new Set(s.split(/[,、\s]+/).map(t => t.trim()).filter(Boolean))];
 
-let tab = null, page = null, images = [], sel = new Set(), lastClick = -1;
+let tab = null, page = null, images = [], sel = new Set(), lastClick = -1, recent = [];
 
 async function init() {
   const st = await send({ type: "state" });
@@ -33,17 +33,76 @@ $("disconnect").onclick = async () => {
   showLogin();
 };
 
-function fillFolders(list) {
-  $("folders").replaceChildren(...list.map(f => Object.assign(document.createElement("option"), { value: f })));
+// Libraries are the top-level folders of the app folder (reference, idea, ...). The folder field
+// is relative to the chosen library; saves go to library/folder. Recently used folders first.
+let all = [];
+const libs = () => [...new Set(all.map(f => f.split("/")[0]))].sort((a, b) => a.localeCompare(b, "ja"));
+const lib = () => $("lib").value;
+const inLib = f => (lib() ? (f.startsWith(lib() + "/") ? f.slice(lib().length + 1) : null) : f);
+
+function fillLibs(want) {
+  const ls = libs();
+  if (want && !ls.includes(want)) ls.push(want);
+  $("lib").replaceChildren(...ls.map(l => Object.assign(document.createElement("option"), { value: l, textContent: l })));
+  $("lib").hidden = !ls.length;
+  if (want) $("lib").value = want;
 }
+
+function fillFolders(list) {
+  if (list) all = list;
+  if (!$("lib").options.length && all.length) fillLibs();
+  const sub = list => list.map(inLib).filter(Boolean);
+  const r = sub(recent), rs = new Set(r);
+  $("folders").replaceChildren(...[...r, ...sub(all).filter(f => !rs.has(f))].map(f => Object.assign(document.createElement("option"), { value: f })));
+}
+
+// Show a saved full path as library + folder.
+function setPath(path) {
+  const [head, ...rest] = (path || "").split("/");
+  if (head && (libs().includes(head) || rest.length || !all.length)) {
+    fillLibs(head);
+    fo.value = rest.join("/");
+  } else fo.value = path || "";
+}
+
+$("lib").onchange = () => {
+  fo.value = recent.map(inLib).find(f => f != null) || "";
+  delete fo.dataset.prev;
+  fillFolders();
+};
+
+// The list only shows entries matching what is typed, so empty the field while it is focused
+// (the current folder stays as the placeholder and comes back if nothing is entered).
+const fo = $("folder");
+fo.addEventListener("focus", () => {
+  if (!fo.value) return;
+  fo.dataset.prev = fo.value;
+  fo.placeholder = fo.value;
+  fo.value = "";
+});
+fo.addEventListener("blur", () => {
+  if (!fo.value.trim() && fo.dataset.prev) fo.value = fo.dataset.prev;
+  fo.placeholder = "フォルダ";
+  delete fo.dataset.prev;
+});
 
 async function showApp(st) {
   $("login").hidden = true;
   $("app").hidden = false;
-  $("folder").value = st.last.folder || "";
+  recent = st.recent || [];
+  all = st.folders || [];
+  fillLibs();
+  setPath(st.last.folder);
   $("tags").value = (st.last.tags || []).join(" ");
-  fillFolders(st.folders);
-  send({ type: "folders" }).then(r => r.folders && fillFolders(r.folders));
+  fillFolders();
+  send({ type: "folders" }).then(r => {
+    if (!r.folders) return;
+    const cur = folderValue();
+    all = r.folders;
+    fillLibs();
+    setPath(cur);
+    fillFolders();
+  });
   send({ type: "ack" });
   showJob((await chrome.storage.session.get("job")).job);
 
@@ -138,7 +197,10 @@ function selectAll() {
 $("all").onclick = selectAll;
 $("min").onchange = render;
 
-const folderValue = () => $("folder").value.trim().replace(/^\/+|\/+$/g, "");
+const folderValue = () => {
+  const f = (fo.value.trim() || fo.dataset.prev || "").replace(/^\/+|\/+$/g, "");
+  return [lib(), f].filter(Boolean).join("/");
+};
 
 $("save").onclick = async () => {
   if (!sel.size) return;
