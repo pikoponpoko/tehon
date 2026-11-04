@@ -12,7 +12,7 @@ const EN={
   "名前":"Name","ランダム":"Random","シャッフル":"Shuffle","レイアウト":"Layout","グリッド":"Grid","ウォーターフォール":"Waterfall","列数":"Columns",
   "選択":"Select","完了":"Done","＋ 追加":"＋ Add","更新":"Update","件選択":"selected","お気に入り":"Favorites","タグを追加":"Add tag","移動":"Move",
   "ゴミ箱へ":"Move to Trash","ゴミ箱から削除":"Delete from Trash","元に戻す":"Restore","すべて選択":"Select all","解除":"Deselect",
-  "すべて":"All","ゴミ箱":"Trash","プレビュー":"Preview",
+  "フォルダが見つかりません":"Folder not found","すべて":"All","ゴミ箱":"Trash","プレビュー":"Preview",
   "保存中":"Saving","未保存":"Not saved","読み込み中":"Loading",
   // viewer
   "閉じる":"Close","読み込み直す":"Reload","縮小":"Zoom out","全体表示":"Fit","拡大":"Zoom in","前のページ":"Previous page","次のページ":"Next page",
