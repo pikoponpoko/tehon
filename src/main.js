@@ -229,7 +229,11 @@ function dbxSave(){
 }
 function flushSave(){if(saveT==null)return;clearTimeout(saveT);saveT=null;$("sync").lastChild.textContent=L("保存中");
   return dbx.saveDevice(own).then(()=>$("sync").lastChild.textContent="Dropbox").catch(()=>{$("sync").lastChild.textContent=L("未保存");toast(L("Dropboxに保存できませんでした"))})}
-addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushSave()});
+// Back to Tehon after a while: read Dropbox again, so changes made elsewhere (other devices, HonHon's ネタ帳) show up.
+// Not while a file is open in the viewer, where a text may be being edited.
+let hiddenAt=0;
+addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"){hiddenAt=Date.now();flushSave();return}
+  if(dbxMode&&hiddenAt&&Date.now()-hiddenAt>20000&&$("viewer").hidden)loadDropbox(true);hiddenAt=0});
 const laterSave=()=>{clearTimeout(saveT);saveT=setTimeout(flushSave,1500);saveCache()};
 function putStatus(its,k){const s=k===NONE?null:k,t=Date.now();its.forEach(i=>i.status=s);
   if(dbxMode&&own){own.status=own.status||{};its.forEach(i=>own.status[i.id]={s,updatedAt:t});laterSave()}else save()}
