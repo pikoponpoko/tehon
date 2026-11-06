@@ -132,6 +132,8 @@ select.btn{padding-right:8px}
 .tag button{all:unset;cursor:pointer;opacity:.6}
 .vfoot input{background:transparent;border:1px solid var(--vline);border-radius:999px;padding:3px 10px;width:120px;color:var(--vfg);outline:none}
 .vfoot .path{margin-left:auto;font-family:var(--mono);opacity:.6}
+.vfoot .path~.path{margin-left:10px}
+.vfoot .lk button{all:unset;cursor:pointer;margin-left:6px}
 .vfoot .src{max-width:min(360px,100%);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);color:var(--vfg);opacity:.6;text-decoration:underline;text-decoration-color:var(--vline);text-underline-offset:3px}
 .vfoot .src:hover{opacity:1;text-decoration-color:currentColor}
 @media (min-width:761px){.vfoot .src{margin-left:10px}}
