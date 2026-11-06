@@ -77,7 +77,7 @@ for(let i=0;i<72;i++){
 }else{FOLDERS=[];TAGS.length=0}
 // persisted per-viewer edits while not connected to Dropbox
 const KEY=DEMO?"tehon-demo-v1":"tehon-local-v1";
-try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s){const m=new Map(s.map(x=>[x.id,x]));items.forEach(it=>{const x=m.get(it.id);if(x){it.tags=x.tags;it.favorite=x.favorite;it.folder=x.folder;it.trashed=x.trashed;it.status=x.status??null;if(x.text!=null)it.text=x.text}});s.filter(x=>x.extra).forEach(x=>items.push(x))}}catch(e){}
+try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s){const m=new Map(s.map(x=>[x.id,x]));items.forEach(it=>{const x=m.get(it.id);if(x){it.tags=x.tags;it.favorite=x.favorite;it.folder=x.folder;it.trashed=x.trashed;it.status=x.status??null;if(x.also)it.also=x.also;if(x.text!=null)it.text=x.text}});s.filter(x=>x.extra).forEach(x=>items.push(x))}}catch(e){}
 // Archived folders: hidden from the library (and everything under them) but kept as they are.
 const AKEY=DEMO?"tehon-demo-arch":"tehon-local-arch";
 let ARCH=new Set();try{ARCH=new Set(JSON.parse(localStorage.getItem(AKEY)||"[]"))}catch(e){}
@@ -92,7 +92,12 @@ const stName=k=>k===NONE?L("未指定"):L(STATUSES.find(s=>s.id===k)?.name||"");
 // First use: what the Eagle libraries marked as published (tag or folder 発表済み) starts in 発表済み.
 const published=it=>it.tags.includes("発表済み")||it.folder.split("/").includes("発表済み");
 function seedStatuses(){STATUSES=DEF_ST.map(s=>({...s}));const p=items.filter(i=>!i.status&&published(i));p.forEach(i=>i.status="done");return p}
-const save=()=>{if(eagleMode)return;if(dbxMode)return dbxSave();try{localStorage.setItem(KEY,JSON.stringify(items.map(it=>it.extra?{...it,blobUrl:null}:{id:it.id,tags:it.tags,favorite:it.favorite,folder:it.folder,trashed:it.trashed,status:it.status||undefined,text:it.kind==="text"?it.text:undefined})))}catch(e){}};
+// An item lives in its own folder and can be linked into more (it.also): it shows in each, the original stays put.
+const fsOf=it=>it.also?.length?[it.folder,...it.also]:[it.folder];
+const under=(x,f)=>x===f||x.startsWith(f+"/");
+const inF=(it,f)=>fsOf(it).some(x=>under(x,f));
+const gone=it=>fsOf(it).every(inArch);
+const save=()=>{if(eagleMode)return;if(dbxMode)return dbxSave();try{localStorage.setItem(KEY,JSON.stringify(items.map(it=>it.extra?{...it,blobUrl:null}:{id:it.id,tags:it.tags,favorite:it.favorite,folder:it.folder,trashed:it.trashed,also:it.also?.length?it.also:undefined,status:it.status||undefined,text:it.kind==="text"?it.text:undefined})))}catch(e){}};
 if(!STATUSES){seedStatuses();if(DEMO)items.forEach((it,i)=>{if(!it.status&&i%5===1)it.status="wip";else if(!it.status&&i%7===3)it.status="done"});try{localStorage.setItem(SKEY,JSON.stringify(STATUSES))}catch(e){}save()}
 
 /* drawing demo artwork */
@@ -212,12 +217,14 @@ const VIEW_EXT=["jpg","jpeg","png","gif","webp","bmp","svg","avif","ico"],VID_EX
 function txtSize(t){const n=t.replace(/\s+/g,"").length;return n<=10?24:n<=25?19:n<=50?16:n<=100?13.5:11.5}
 function kindOf(ext){return ext==="gif"?"gif":VID_EXT.includes(ext)?"video":TXT_EXT.includes(ext)?"text":"image"}
 const metaOf=it=>it.kind==="url"?{name:it.name,url:it.url,folder:it.folder,tags:it.tags,favorite:it.favorite,trashed:it.trashed,addedAt:it.addedAt}:{tags:it.tags,favorite:it.favorite,trashed:it.trashed};
-const snap=new Map();let saveT=null;
+const snap=new Map(),lsnap=new Map();let saveT=null;
 function dbxSave(){
   if(!own)return;
   const t=Date.now();let ch=false;
   for(const it of items){const m=metaOf(it),j=JSON.stringify(m);if(snap.get(it.id)===j)continue;snap.set(it.id,j);
     if(it.kind==="url")own.urls[it.key]={...m,updatedAt:t};else own.items[it.id]={...m,updatedAt:t};ch=true}
+  for(const it of items){const j=JSON.stringify(it.also||[]);if((lsnap.get(it.id)||"[]")===j)continue;lsnap.set(it.id,j);
+    (own.links||={})[it.id]={folders:it.also||[],updatedAt:t};ch=true}
   if(ch){clearTimeout(saveT);saveT=setTimeout(flushSave,1500)}
 }
 function flushSave(){if(saveT==null)return;clearTimeout(saveT);saveT=null;$("sync").lastChild.textContent=L("保存中");
@@ -244,7 +251,7 @@ let FOLDER_IDS={};
 function loadCache(){
   try{const c=JSON.parse(localStorage.getItem(CACHE)||"null");if(!c)return false;
     dbxMode=true;items=c.items;FOLDERS=c.folders;STATUSES=c.statuses||DEF_ST.map(s=>({...s}));FOLDER_IDS=c.folderIds||{};ARCH=new Set(c.arch||[]);TAGS.length=0;TAGS.push(...new Set(items.flatMap(i=>i.tags)));
-    snap.clear();items.forEach(it=>snap.set(it.id,JSON.stringify(metaOf(it))));return true}catch(e){return false}
+    snap.clear();lsnap.clear();items.forEach(it=>{snap.set(it.id,JSON.stringify(metaOf(it)));lsnap.set(it.id,JSON.stringify(it.also||[]))});return true}catch(e){return false}
 }
 const saveCache=()=>{try{localStorage.setItem(CACHE,JSON.stringify({items,folders:FOLDERS,folderIds:FOLDER_IDS,arch:[...ARCH],statuses:STATUSES}))}catch(e){}};
 async function loadDropbox(keep=false){
@@ -257,6 +264,7 @@ async function loadDropbox(keep=false){
     const out=entries.filter(e=>e[".tag"]==="file").map(e=>{const x=ef.get(e.path_lower.normalize("NFC"));const it=dbxItem(e,meta.items[e.id]||x);if(x?.addedAt)it.addedAt=x.addedAt;it.source=meta.sources[e.id]?.url||x?.url||null;return it});
     for(const u of em?.urls||[]){const k="eagle-"+u.addedAt+"-"+u.url;if(!meta.urls[k])meta.urls[k]={...u,updatedAt:0}}
     for(const [k,u] of Object.entries(meta.urls))if(!u.deleted)out.push({id:"url:"+k,key:k,name:u.name,folder:u.folder,kind:"url",url:u.url,tags:u.tags||[],favorite:!!u.favorite,trashed:!!u.trashed,addedAt:u.addedAt,w:0,h:0,dbx:true});
+    for(const it of out){const l=meta.links[it.id]?.folders?.filter(f=>f!==it.folder);if(l?.length)it.also=[...new Set(l)]}
     const oldRev=new Map(items.map(i=>[i.id,i.rev]));
     for(const it of out)if(oldRev.has(it.id)&&oldRev.get(it.id)!==it.rev){thumbCache.delete(it.id);thumbAsked.delete(it.id);previewP.delete(it.id);textMem.delete(it.id);posterMem.delete(it.id);posterP.delete(it.id)}
     for(const it of out)it.status=meta.status[it.id]?.s??null;
@@ -266,7 +274,7 @@ async function loadDropbox(keep=false){
     const fe=entries.filter(e=>e[".tag"]==="folder");
     FOLDERS=fe.map(e=>e.path_display.slice(1)).sort((a,b)=>a.localeCompare(b,"ja"));FOLDER_IDS=Object.fromEntries(fe.map(e=>[e.id,e.path_display.slice(1)]));
     TAGS.length=0;TAGS.push(...new Set(out.flatMap(i=>i.tags)));
-    snap.clear();items.forEach(it=>snap.set(it.id,JSON.stringify(metaOf(it))));
+    snap.clear();lsnap.clear();items.forEach(it=>{snap.set(it.id,JSON.stringify(metaOf(it)));lsnap.set(it.id,JSON.stringify(it.also||[]))});
     if(!keep){st.view="all";st.folder=null;st.lib=null;st.tag=null;st.q="";$("q").value="";st.sel.clear()}
     openFolderQ(true);
     saveCache();dbx.cachePrune(new Set([...out.map(i=>i.id),...ogpFiles.values()])).catch(()=>{});
@@ -283,15 +291,15 @@ const folderOpts=sel=>(dbxMode?["",...FOLDERS]:FOLDERS).map(f=>`<option value="$
 // lib: the top-level folder (library, e.g. reference / idea) the user is in. Tags are listed and filtered within it.
 const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,lib:null,tag:null,q:"",sort:"added-desc",type:"",status:null,sel:new Set(),selecting:false,anchor:null};
 let list=[];
-const libOf=f=>f?f.split("/")[0]:null,inLib=lib=>it=>it.folder===lib||it.folder.startsWith(lib+"/");
-const qMatch=q=>it=>(it.name+" "+it.folder+" "+it.tags.join(" ")+" "+(it.url||"")+" "+(it.source||"")).toLowerCase().includes(q);
+const libOf=f=>f?f.split("/")[0]:null,inLib=lib=>it=>inF(it,lib);
+const qMatch=q=>it=>(it.name+" "+fsOf(it).join(" ")+" "+it.tags.join(" ")+" "+(it.url||"")+" "+(it.source||"")).toLowerCase().includes(q);
 function filtered(anyStatus){
   const q=st.q.trim().toLowerCase();
   const ia=!!(st.folder||st.lib)&&inArch(st.folder||st.lib);
-  let l=items.filter(it=>st.view==="trash"?it.trashed:!it.trashed&&(ia||!inArch(it.folder)));
+  let l=items.filter(it=>st.view==="trash"?it.trashed:!it.trashed&&(ia||!gone(it)));
   if(st.view==="fav")l=l.filter(it=>it.favorite);
   if(st.view==="url")l=l.filter(it=>it.kind==="url");
-  if(st.folder)l=l.filter(it=>it.folder===st.folder||it.folder.startsWith(st.folder+"/"));
+  if(st.folder)l=l.filter(it=>inF(it,st.folder));
   else if(st.lib)l=l.filter(inLib(st.lib));
   if(st.tag)l=l.filter(it=>it.tags.includes(st.tag));
   if(st.type)l=l.filter(it=>typeOf(it)===st.type);
@@ -308,7 +316,7 @@ const typeOf=it=>it.badge?"x:"+it.badge:it.kind;
 const TYPE_NAMES={image:L("画像"),gif:"GIF",video:L("動画"),text:L("テキスト"),url:"URL"};
 function renderTypes(){
   const ia=!!st.folder&&inArch(st.folder);
-  const cnt=new Map();items.forEach(i=>{if(!i.trashed&&(ia||!inArch(i.folder))){const t=typeOf(i);cnt.set(t,(cnt.get(t)||0)+1)}});
+  const cnt=new Map();items.forEach(i=>{if(!i.trashed&&(ia||!gone(i))){const t=typeOf(i);cnt.set(t,(cnt.get(t)||0)+1)}});
   if(st.type&&!cnt.has(st.type))cnt.set(st.type,0);
   const ks=Object.keys(TYPE_NAMES),ord=t=>{const i=ks.indexOf(t);return i<0?ks.length:i};
   const ts=[...cnt.keys()].sort((a,b)=>ord(a)-ord(b)||a.localeCompare(b));
@@ -323,7 +331,7 @@ document.querySelectorAll(".sh").forEach(b=>{const k=b.dataset.sec,apply=()=>{co
 function navBtn(label,n,on,fn,cls=""){const b=document.createElement("button");b.className=(on?"on ":"")+cls;b.innerHTML=`<span></span><span class="n">${n}</span>`;b.firstChild.textContent=label;b.onclick=()=>{fn();closeNav()};return b}
 function renderSide(){
   renderTypes();
-  const live=items.filter(i=>!i.trashed&&!inArch(i.folder));
+  const live=items.filter(i=>!i.trashed&&!gone(i));
   const lib=$("lib");lib.replaceChildren(
     navBtn(L("すべて"),live.length,st.view==="all"&&!st.folder&&!st.tag,()=>setView("all")),
     favBtn(navBtn(L("お気に入り"),live.filter(i=>i.favorite).length,st.view==="fav",()=>setView("fav"))),
@@ -340,7 +348,7 @@ function renderSide(){
   // Counts match what a folder click shows: the toolbar's type filter and search apply, and an archived subfolder
   // is left out of its parent's count unless the parent is archived too.
   const sq=st.q.trim().toLowerCase(),narrow=l=>{if(st.type)l=l.filter(i=>typeOf(i)===st.type);return sq?l.filter(qMatch(sq)):l};
-  const cnt=new Map();narrow(items.filter(i=>!i.trashed)).forEach(i=>{const a=i.folder.split("/"),ia=inArch(i.folder);a.forEach((_,k)=>{const q=a.slice(0,k+1).join("/");if(ia&&!inArch(q))return;cnt.set(q,(cnt.get(q)||0)+1)})});
+  const cnt=new Map();narrow(items.filter(i=>!i.trashed)).forEach(i=>{const s=new Set();for(const x of fsOf(i)){const a=x.split("/"),ia=inArch(x);a.forEach((_,k)=>{const q=a.slice(0,k+1).join("/");if(!(ia&&!inArch(q)))s.add(q)})}s.forEach(q=>cnt.set(q,(cnt.get(q)||0)+1))});
   const order=[...all].sort((a,b)=>{const x=a.split("/"),y=b.split("/");for(let i=0;i<Math.min(x.length,y.length);i++){if(x[i]!==y[i]){const ix=FOLDERS.findIndex(z=>z.split("/")[i]===x[i]),iy=FOLDERS.findIndex(z=>z.split("/")[i]===y[i]);return ix-iy||x[i].localeCompare(y[i],"ja")}}return x.length-y.length});
   const kids=new Set(order.filter(q=>q.includes("/")).map(q=>q.slice(0,q.lastIndexOf("/"))));
   const shown=q=>{const a=q.split("/");for(let i=1;i<a.length;i++)if(!fold.open.has(a.slice(0,i).join("/")))return false;return true};
@@ -354,7 +362,7 @@ function renderSide(){
   for(const q of arch){const b=navBtn(q,cnt.get(q)||0,st.folder===q,()=>setFolder(q));b.dataset.q=q;ar.append(b)}
   const tg=$("tags");tg.replaceChildren();
   // Inside a library only its own tags are listed.
-  const tp=st.lib?items.filter(i=>!i.trashed&&inLib(st.lib)(i)&&(inArch(st.lib)||!inArch(i.folder))):live;
+  const tp=st.lib?items.filter(i=>!i.trashed&&inLib(st.lib)(i)&&(inArch(st.lib)||!gone(i))):live;
   const tagAll=[...new Set(tp.flatMap(i=>i.tags))].sort((a,b)=>a.localeCompare(b,"ja"));
   const tc=new Map(tagAll.map(t=>[t,tp.filter(i=>i.tags.includes(t)).length])),lo=Math.log(Math.min(...tc.values())),rg=Math.log(Math.max(...tc.values()))-lo||1;
   // The number is what a tag click shows: the whole library, narrowed only by the toolbar's type filter and search.
@@ -478,7 +486,8 @@ function dbxLink(it){return it.link&&Date.now()<it.linkExp?Promise.resolve(it.li
 function renderSel(){
   const n=st.sel.size;$("selbar").hidden=!(n||st.selecting);$("selN").textContent=n;
   const tr=st.view==="trash";$("bRestore").hidden=!tr;$("bTrash").textContent=tr?L("ゴミ箱から削除"):L("ゴミ箱へ");
-  ["bFav","bTag","bMove","bStatus"].forEach(x=>$(x).hidden=tr);
+  ["bFav","bTag","bMove","bLink","bStatus"].forEach(x=>$(x).hidden=tr);
+  $("bUnlink").hidden=tr||!st.folder||!selItems().some(i=>i.also?.some(x=>under(x,st.folder)));
   if(dbxMode){$("bMove").hidden=true;$("bTrash").hidden=tr}else $("bTrash").hidden=false;
   $("selBtn").textContent=st.selecting?L("完了"):L("選択");
 }
@@ -593,7 +602,12 @@ $("bTag").onclick=()=>{const s=selItems();const cur=[...new Set(s.flatMap(i=>i.t
 $("bStatus").onclick=()=>{const s=selItems(),cur=new Set(s.map(stOf));
   formDlg(L("ステータス"),`<div class="nav stpick">${[NONE,...STATUSES.map(x=>x.id)].map(k=>`<button type="button" data-s="${esc(k)}"${cur.size===1&&cur.has(k)?' class="on"':""}><span>${esc(stName(k))}</span></button>`).join("")}</div>`,L("閉じる"),()=>{},
   ()=>{$("dlgForm").querySelector(".row").hidden=true;$("dlgForm").querySelector(".stpick").onclick=e=>{const b=e.target.closest("button");if(!b)return;$("dlg").hidden=true;putStatus(s,b.dataset.s);st.sel.clear();st.selecting=false;render();toast(L("{n} 件を「{t}」にしました",{n:s.length,t:stName(b.dataset.s)}));dropImp()}})};
-$("bMove").onclick=()=>formDlg(L("移動"),`<select id="fFolder">${folderOpts()}</select>`,L("移動"),()=>{const f=$("fFolder").value;const s=selItems();s.forEach(i=>i.folder=f);st.sel.clear();save();render();toast(L("{n} 件を {f} へ移動しました",{n:s.length,f}))});
+$("bMove").onclick=()=>formDlg(L("移動"),`<select id="fFolder">${folderOpts()}</select>`,L("移動"),()=>{const f=$("fFolder").value;const s=selItems();s.forEach(i=>{i.folder=f;if(i.also){i.also=i.also.filter(x=>x!==f);if(!i.also.length)delete i.also}});st.sel.clear();save();render();toast(L("{n} 件を {f} へ移動しました",{n:s.length,f}))});
+// Link: also show the selected items in another folder, without copying or moving the files.
+$("bLink").onclick=()=>formDlg(L("リンク"),`<select id="fFolder">${FOLDERS.filter(f=>!inArch(f)).map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("")}</select>`,L("追加"),()=>{const f=$("fFolder").value;if(!f)return;
+  const s=selItems();s.forEach(i=>{if(i.folder!==f&&!i.also?.includes(f))i.also=[...(i.also||[]),f]});st.sel.clear();save();render();toast(L("{n} 件を {f} にリンクしました",{n:s.length,f}))});
+$("bUnlink").onclick=()=>{const f=st.folder,s=selItems().filter(i=>i.also?.some(x=>under(x,f)));s.forEach(i=>{i.also=i.also.filter(x=>!under(x,f));if(!i.also.length)delete i.also});
+  st.sel.clear();save();render();toast(L("{n} 件のリンクを外しました",{n:s.length}))};
 $("addBtn").onclick=()=>formDlg(L("追加"),`<select id="fKind"><option value="file">${L("ファイル（画像・動画・テキスト）")}</option><option value="url">URL</option>${EAGLE?`<option value="eagle">Eagleライブラリ（.library フォルダ）</option>`:""}</select><input id="fUrl" type="url" placeholder="https://" hidden><select id="fFolder">${folderOpts(st.folder)}</select>`,L("追加"),()=>{
   const f=$("fFolder").value;
   if($("fKind").value==="file"){pendingFolder=f;$("file").click();return}
@@ -935,6 +949,8 @@ function renderFoot(it){
   inp.onkeydown=e=>{e.stopPropagation();if(e.key==="Enter"&&inp.value.trim()){const t=inp.value.trim();if(!it.tags.includes(t))it.tags.push(t);save();renderFoot(it);renderSide();$("vTagInput").focus()}if(e.key==="Escape")inp.blur()};
   const p=document.createElement("span");p.className="path";p.textContent=`/${it.folder}${it.w?` · ${it.w}×${it.h}`:""}`;
   f.append(inp,dl,p);
+  for(const x of it.also||[]){const s=document.createElement("span");s.className="path lk";s.textContent="/"+x;const b=document.createElement("button");b.textContent="✕";b.setAttribute("aria-label",L("リンクを外す"));
+    b.onclick=()=>{it.also=it.also.filter(z=>z!==x);if(!it.also.length)delete it.also;save();renderFoot(it);renderSide()};s.append(b);f.append(s)}
   if(it.source&&/^https?:\/\//.test(it.source)){const a=document.createElement("a");a.className="src";a.href=it.source;a.target="_blank";a.rel="noopener noreferrer";a.title=it.source;let t=it.source;try{t=decodeURI(t)}catch{}a.textContent=t.replace(/^https?:\/\/(www\.)?/,"").replace(/\/$/,"");f.append(a)}
 }
 function fitV(){if(!V.el||V.el===vt)return;const r=$("stage").getBoundingClientRect();V.fit=Math.min(r.width/V.w,r.height/V.h,1)*.96;V.z=V.fit;V.x=0;V.y=0;
