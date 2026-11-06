@@ -134,6 +134,9 @@ select.btn{padding-right:8px}
 .vfoot .path{margin-left:auto;font-family:var(--mono);opacity:.6}
 .vfoot .path~.path{margin-left:10px}
 .vfoot .lk button{all:unset;cursor:pointer;margin-left:6px}
+.vfoot .src{max-width:min(360px,100%);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);color:var(--vfg);opacity:.6;text-decoration:underline;text-decoration-color:var(--vline);text-underline-offset:3px}
+.vfoot .src:hover{opacity:1;text-decoration-color:currentColor}
+@media (min-width:761px){.vfoot .src{margin-left:10px}}
 /* dialog */
 .dlg{position:fixed;inset:0;background:rgba(6,8,12,.5);z-index:30;display:flex;align-items:center;justify-content:center;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .dlg form{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;width:min(380px,100%);display:flex;flex-direction:column;gap:10px}
