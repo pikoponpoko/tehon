@@ -376,11 +376,13 @@ export interface ItemMeta { tags: string[]; favorite: boolean; trashed: boolean;
 export interface UrlMeta { name: string; url: string; folder: string; tags: string[]; favorite: boolean; trashed: boolean; deleted?: boolean; addedAt: number; updatedAt: number }
 /** Per-folder state, keyed by folder path. Archived folders are hidden from the library but kept in Dropbox. */
 export interface FolderMeta { archived: boolean; updatedAt: number }
+/** Web page a file was saved from, keyed by file id. Kept apart from `items`, whose shape Soku Conte reads. */
+export interface SourceMeta { url: string; updatedAt: number }
 /** Kanban status of an item (file id, or "url:" + key for URLs); s null = no status. Kept apart from items so their shape stays as it is. */
 export interface StatusMeta { s: string | null; updatedAt: number }
 /** The user's statuses, in column order. "No status" is not in the list. */
 export interface StatusList { list: { id: string; name: string }[]; updatedAt: number }
-export interface DeviceFile { version: 1; device: string; items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders?: Record<string, FolderMeta>; status?: Record<string, StatusMeta>; statuses?: StatusList }
+export interface DeviceFile { version: 1; device: string; items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders?: Record<string, FolderMeta>; sources?: Record<string, SourceMeta>; status?: Record<string, StatusMeta>; statuses?: StatusList }
 
 export function deviceId(): string {
   let d = localStorage.getItem("tehon-device");
@@ -391,12 +393,13 @@ export function deviceId(): string {
   return d;
 }
 
-export async function loadMeta(): Promise<{ items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders: Record<string, FolderMeta>; status: Record<string, StatusMeta>; statuses: StatusList | null; own: DeviceFile }> {
+export async function loadMeta(): Promise<{ items: Record<string, ItemMeta>; urls: Record<string, UrlMeta>; folders: Record<string, FolderMeta>; sources: Record<string, SourceMeta>; status: Record<string, StatusMeta>; statuses: StatusList | null; own: DeviceFile }> {
   const me = deviceId();
   const own: DeviceFile = { version: 1, device: me, items: {}, urls: {} };
   const items: Record<string, ItemMeta> = {};
   const urls: Record<string, UrlMeta> = {};
   const folders: Record<string, FolderMeta> = {};
+  const sources: Record<string, SourceMeta> = {};
   const status: Record<string, StatusMeta> = {};
   let statuses: StatusList | null = null;
   let files: FileMeta[] = [];
@@ -418,8 +421,9 @@ export async function loadMeta(): Promise<{ items: Record<string, ItemMeta>; url
     for (const [k, v] of Object.entries(d.folders || {})) if (!folders[k] || folders[k].updatedAt < v.updatedAt) folders[k] = v;
     for (const [k, v] of Object.entries(d.status || {})) if (!status[k] || status[k].updatedAt < v.updatedAt) status[k] = v;
     if (d.statuses && (!statuses || statuses.updatedAt < d.statuses.updatedAt)) statuses = d.statuses;
+    for (const [k, v] of Object.entries(d.sources || {})) if (!sources[k] || sources[k].updatedAt < v.updatedAt) sources[k] = v;
   }
-  return { items, urls, folders, status, statuses, own };
+  return { items, urls, folders, sources, status, statuses, own };
 }
 
 export async function saveDevice(d: DeviceFile) {
@@ -479,12 +483,16 @@ export async function remove(path: string) {
   await rpc("files/delete_v2", { path });
 }
 
-/** Tags etc. carried over from Eagle, keyed by file path (/.tehon/eagle-manifest.json). Device data overrides it. */
-export interface EagleManifest { files: Record<string, { tags: string[]; favorite: boolean; trashed: boolean; addedAt?: number }>; urls: Omit<UrlMeta, "updatedAt">[] }
+/** Tags etc. carried over from Eagle, keyed by file path (/.tehon/eagle-manifest.json). Device data overrides it.
+ *  Source page URLs are in /.tehon/eagle-sources.json ({ path: url }) and are merged in as `url`. */
+export interface EagleManifest { files: Record<string, { tags: string[]; favorite: boolean; trashed: boolean; addedAt?: number; url?: string }>; urls: Omit<UrlMeta, "updatedAt">[] }
 export async function loadEagleManifest(): Promise<EagleManifest | null> {
-  try {
-    return await readJson(META_DIR + "/eagle-manifest.json");
-  } catch {
-    return null;
-  }
+  const [m, src] = await Promise.all([
+    readJson<EagleManifest>(META_DIR + "/eagle-manifest.json").catch(() => null),
+    readJson<Record<string, string>>(META_DIR + "/eagle-sources.json").catch(() => null),
+  ]);
+  if (!m && !src) return null;
+  const out: EagleManifest = m || { files: {}, urls: [] };
+  for (const [k, url] of Object.entries(src || {})) out.files[k] = { ...(out.files[k] || { tags: [], favorite: false, trashed: false }), url };
+  return out;
 }

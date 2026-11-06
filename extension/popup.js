@@ -210,7 +210,7 @@ $("save").onclick = async () => {
   const items = visible()
     .filter(i => sel.has(i.key))
     .map(i => (i.vid ? { vid: i.vid, url: i.url } : { url: i.url }));
-  await send({ type: "save", tabId: tab.id, items, folder: folderValue(), tags: splitTags($("tags").value) });
+  await send({ type: "save", tabId: tab.id, page: page.url, items, folder: folderValue(), tags: splitTags($("tags").value) });
   sel.clear();
   [...$("grid").children].forEach(c => c.classList.remove("on"));
   updateCount();
