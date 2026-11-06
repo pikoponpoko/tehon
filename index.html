@@ -21,6 +21,7 @@
     <div class="brand">Tehon <span class="sync" id="sync"><i></i>未接続</span></div>
     <div class="nav setbtn"><button id="setBtn"><span>設定</span></button></div>
     <div class="sec"><div class="nav" id="lib"></div></div>
+    <div class="sec"><h3><button class="sh" data-sec="status">ステータス</button></h3><div class="nav" id="statuses"></div></div>
     <div class="sec"><h3><button class="sh" data-sec="folders">フォルダ</button></h3><div class="nav" id="folders"></div></div>
     <div class="sec"><h3><button class="sh" data-sec="tags">タグ</button></h3><div class="nav chips" id="tags"></div></div>
     <div class="sec" id="archSec" hidden><h3><button class="sh" data-sec="arch">アーカイブ</button></h3><div class="nav" id="arch"></div></div>
@@ -39,7 +40,7 @@
         <option value="random">ランダム</option>
       </select></span>
       <button class="btn" id="shuffle" hidden aria-label="シャッフル"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h3l6 8h3M2 12h3l6-8h3M12 2l2 2-2 2M12 10l2 2-2 2"/></svg><span>シャッフル</span></button>
-      <span class="seg" role="group" aria-label="レイアウト"><button id="lGrid" aria-label="グリッド" title="グリッド"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg></button><button id="lFall" class="on" aria-label="ウォーターフォール" title="ウォーターフォール"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="8" rx="1"/><rect x="9" y="1" width="6" height="5" rx="1"/><rect x="1" y="11" width="6" height="4" rx="1"/><rect x="9" y="8" width="6" height="7" rx="1"/></svg></button></span>
+      <span class="seg" role="group" aria-label="レイアウト"><button id="lGrid" aria-label="グリッド" title="グリッド"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg></button><button id="lFall" class="on" aria-label="ウォーターフォール" title="ウォーターフォール"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="8" rx="1"/><rect x="9" y="1" width="6" height="5" rx="1"/><rect x="1" y="11" width="6" height="4" rx="1"/><rect x="9" y="8" width="6" height="7" rx="1"/></svg></button><button id="lKan" aria-label="カンバン" title="カンバン"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="4" height="14" rx="1"/><rect x="6" y="1" width="4" height="9" rx="1"/><rect x="11" y="1" width="4" height="11" rx="1"/></svg></button></span>
       <input class="size" id="size" type="range" min="1" max="12" step="1" value="6" aria-label="列数" title="列数">
       <button class="btn pri" id="updBtn" hidden>更新</button>
       <button class="btn" id="selBtn">選択</button>
@@ -53,6 +54,7 @@
       <span><b id="selN">0</b> 件選択</span>
       <button class="btn" id="bFav"><svg class="hi" viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> お気に入り</button>
       <button class="btn" id="bTag">タグを追加</button>
+      <button class="btn" id="bStatus">ステータス</button>
       <button class="btn" id="bMove">移動</button>
       <button class="btn" id="bLink">リンク</button>
       <button class="btn" id="bUnlink" hidden>リンクを外す</button>

@@ -77,17 +77,28 @@ for(let i=0;i<72;i++){
 }else{FOLDERS=[];TAGS.length=0}
 // persisted per-viewer edits while not connected to Dropbox
 const KEY=DEMO?"tehon-demo-v1":"tehon-local-v1";
-try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s){const m=new Map(s.map(x=>[x.id,x]));items.forEach(it=>{const x=m.get(it.id);if(x){it.tags=x.tags;it.favorite=x.favorite;it.folder=x.folder;it.trashed=x.trashed;if(x.also)it.also=x.also;if(x.text!=null)it.text=x.text}});s.filter(x=>x.extra).forEach(x=>items.push(x))}}catch(e){}
+try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s){const m=new Map(s.map(x=>[x.id,x]));items.forEach(it=>{const x=m.get(it.id);if(x){it.tags=x.tags;it.favorite=x.favorite;it.folder=x.folder;it.trashed=x.trashed;it.status=x.status??null;if(x.also)it.also=x.also;if(x.text!=null)it.text=x.text}});s.filter(x=>x.extra).forEach(x=>items.push(x))}}catch(e){}
 // Archived folders: hidden from the library (and everything under them) but kept as they are.
 const AKEY=DEMO?"tehon-demo-arch":"tehon-local-arch";
 let ARCH=new Set();try{ARCH=new Set(JSON.parse(localStorage.getItem(AKEY)||"[]"))}catch(e){}
 const inArch=f=>{for(const a of ARCH)if(f===a||f.startsWith(a+"/"))return true;return false};
+/* Status (kanban columns). "-" is 未指定 (no status) and always comes first; the rest are the user's, in order.
+   In Dropbox they live in the device file's own "status"/"statuses" keys, so items[id] keeps its shape (Soku Conte reads it). */
+const NONE="-",DEF_ST=[{id:"wip",name:"作業中"},{id:"done",name:"発表済み"}];
+const SKEY=DEMO?"tehon-demo-statuses":"tehon-local-statuses";
+let STATUSES=null;try{STATUSES=JSON.parse(localStorage.getItem(SKEY)||"null")}catch(e){}
+const stOf=it=>it.status&&STATUSES.some(s=>s.id===it.status)?it.status:NONE;
+const stName=k=>k===NONE?L("未指定"):L(STATUSES.find(s=>s.id===k)?.name||"");
+// First use: what the Eagle libraries marked as published (tag or folder 発表済み) starts in 発表済み.
+const published=it=>it.tags.includes("発表済み")||it.folder.split("/").includes("発表済み");
+function seedStatuses(){STATUSES=DEF_ST.map(s=>({...s}));const p=items.filter(i=>!i.status&&published(i));p.forEach(i=>i.status="done");return p}
 // An item lives in its own folder and can be linked into more (it.also): it shows in each, the original stays put.
 const fsOf=it=>it.also?.length?[it.folder,...it.also]:[it.folder];
 const under=(x,f)=>x===f||x.startsWith(f+"/");
 const inF=(it,f)=>fsOf(it).some(x=>under(x,f));
 const gone=it=>fsOf(it).every(inArch);
-const save=()=>{if(eagleMode)return;if(dbxMode)return dbxSave();try{localStorage.setItem(KEY,JSON.stringify(items.map(it=>it.extra?{...it,blobUrl:null}:{id:it.id,tags:it.tags,favorite:it.favorite,folder:it.folder,trashed:it.trashed,also:it.also?.length?it.also:undefined,text:it.kind==="text"?it.text:undefined})))}catch(e){}};
+const save=()=>{if(eagleMode)return;if(dbxMode)return dbxSave();try{localStorage.setItem(KEY,JSON.stringify(items.map(it=>it.extra?{...it,blobUrl:null}:{id:it.id,tags:it.tags,favorite:it.favorite,folder:it.folder,trashed:it.trashed,also:it.also?.length?it.also:undefined,status:it.status||undefined,text:it.kind==="text"?it.text:undefined})))}catch(e){}};
+if(!STATUSES){seedStatuses();if(DEMO)items.forEach((it,i)=>{if(!it.status&&i%5===1)it.status="wip";else if(!it.status&&i%7===3)it.status="done"});try{localStorage.setItem(SKEY,JSON.stringify(STATUSES))}catch(e){}save()}
 
 /* drawing demo artwork */
 function draw(ctx,it,W,H,t=0){
@@ -219,6 +230,10 @@ function dbxSave(){
 function flushSave(){if(saveT==null)return;clearTimeout(saveT);saveT=null;$("sync").lastChild.textContent=L("保存中");
   return dbx.saveDevice(own).then(()=>$("sync").lastChild.textContent="Dropbox").catch(()=>{$("sync").lastChild.textContent=L("未保存");toast(L("Dropboxに保存できませんでした"))})}
 addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")flushSave()});
+const laterSave=()=>{clearTimeout(saveT);saveT=setTimeout(flushSave,1500);saveCache()};
+function putStatus(its,k){const s=k===NONE?null:k,t=Date.now();its.forEach(i=>i.status=s);
+  if(dbxMode&&own){own.status=own.status||{};its.forEach(i=>own.status[i.id]={s,updatedAt:t});laterSave()}else save()}
+function putStatuses(){if(dbxMode&&own){own.statuses={list:STATUSES,updatedAt:Date.now()};laterSave()}else if(!eagleMode)try{localStorage.setItem(SKEY,JSON.stringify(STATUSES))}catch(e){}}
 function dbxItem(e,m){
   const dot=e.name.lastIndexOf(".");const ext=dot>0?e.name.slice(dot+1).toLowerCase():"";const kind=kindOf(ext);
   const p=e.path_display.slice(1);const folder=p.includes("/")?p.slice(0,p.lastIndexOf("/")):"";
@@ -235,10 +250,10 @@ const CACHE="tehon-dbx-cache";
 let FOLDER_IDS={};
 function loadCache(){
   try{const c=JSON.parse(localStorage.getItem(CACHE)||"null");if(!c)return false;
-    dbxMode=true;items=c.items;FOLDERS=c.folders;FOLDER_IDS=c.folderIds||{};ARCH=new Set(c.arch||[]);TAGS.length=0;TAGS.push(...new Set(items.flatMap(i=>i.tags)));
+    dbxMode=true;items=c.items;FOLDERS=c.folders;STATUSES=c.statuses||DEF_ST.map(s=>({...s}));FOLDER_IDS=c.folderIds||{};ARCH=new Set(c.arch||[]);TAGS.length=0;TAGS.push(...new Set(items.flatMap(i=>i.tags)));
     snap.clear();lsnap.clear();items.forEach(it=>{snap.set(it.id,JSON.stringify(metaOf(it)));lsnap.set(it.id,JSON.stringify(it.also||[]))});return true}catch(e){return false}
 }
-const saveCache=()=>{try{localStorage.setItem(CACHE,JSON.stringify({items,folders:FOLDERS,folderIds:FOLDER_IDS,arch:[...ARCH]}))}catch(e){}};
+const saveCache=()=>{try{localStorage.setItem(CACHE,JSON.stringify({items,folders:FOLDERS,folderIds:FOLDER_IDS,arch:[...ARCH],statuses:STATUSES}))}catch(e){}};
 async function loadDropbox(keep=false){
   $("sync").lastChild.textContent=L("読み込み中");
   try{
@@ -252,7 +267,10 @@ async function loadDropbox(keep=false){
     for(const it of out){const l=meta.links[it.id]?.folders?.filter(f=>f!==it.folder);if(l?.length)it.also=[...new Set(l)]}
     const oldRev=new Map(items.map(i=>[i.id,i.rev]));
     for(const it of out)if(oldRev.has(it.id)&&oldRev.get(it.id)!==it.rev){thumbCache.delete(it.id);thumbAsked.delete(it.id);previewP.delete(it.id);textMem.delete(it.id);posterMem.delete(it.id);posterP.delete(it.id)}
+    for(const it of out)it.status=meta.status[it.id]?.s??null;
     dbxMode=true;eagleMode=false;dbxPending=false;items=out;
+    if(meta.statuses)STATUSES=meta.statuses.list;
+    else{const p=seedStatuses();own.statuses={list:STATUSES,updatedAt:Date.now()};own.status=own.status||{};p.forEach(i=>own.status[i.id]={s:i.status,updatedAt:own.statuses.updatedAt});clearTimeout(saveT);saveT=setTimeout(flushSave,1500)}
     const fe=entries.filter(e=>e[".tag"]==="folder");
     FOLDERS=fe.map(e=>e.path_display.slice(1)).sort((a,b)=>a.localeCompare(b,"ja"));FOLDER_IDS=Object.fromEntries(fe.map(e=>[e.id,e.path_display.slice(1)]));
     TAGS.length=0;TAGS.push(...new Set(out.flatMap(i=>i.tags)));
@@ -271,11 +289,11 @@ const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const folderOpts=sel=>(dbxMode?["",...FOLDERS]:FOLDERS).map(f=>`<option value="${esc(f)}"${f===sel?" selected":""}>${f?esc(f):"/"}</option>`).join("");
 /* state */
 // lib: the top-level folder (library, e.g. reference / idea) the user is in. Tags are listed and filtered within it.
-const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,lib:null,tag:null,q:"",sort:"added-desc",type:"",sel:new Set(),selecting:false,anchor:null};
+const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,lib:null,tag:null,q:"",sort:"added-desc",type:"",status:null,sel:new Set(),selecting:false,anchor:null};
 let list=[];
 const libOf=f=>f?f.split("/")[0]:null,inLib=lib=>it=>inF(it,lib);
 const qMatch=q=>it=>(it.name+" "+fsOf(it).join(" ")+" "+it.tags.join(" ")+" "+(it.url||"")+" "+(it.source||"")).toLowerCase().includes(q);
-function filtered(){
+function filtered(anyStatus){
   const q=st.q.trim().toLowerCase();
   const ia=!!(st.folder||st.lib)&&inArch(st.folder||st.lib);
   let l=items.filter(it=>st.view==="trash"?it.trashed:!it.trashed&&(ia||!gone(it)));
@@ -286,6 +304,8 @@ function filtered(){
   if(st.tag)l=l.filter(it=>it.tags.includes(st.tag));
   if(st.type)l=l.filter(it=>typeOf(it)===st.type);
   if(q)l=l.filter(qMatch(q));
+  if(st.status&&!anyStatus)l=l.filter(it=>stOf(it)===st.status);
+  if(anyStatus)return l;
   if(st.sort==="random"){const r=x=>{let h=st.rseed;for(const c of x.id)h=Math.imul(h^c.charCodeAt(0),2654435761);return h>>>0};return l.sort((x,y)=>r(x)-r(y))}
   const [k,d]=st.sort.split("-");
   l.sort((x,y)=>k==="name"?x.name.localeCompare(y.name,"ja"):k==="kind"?x.kind.localeCompare(y.kind)||y.addedAt-x.addedAt:(d==="asc"?x.addedAt-y.addedAt:y.addedAt-x.addedAt));
@@ -317,6 +337,10 @@ function renderSide(){
     favBtn(navBtn(L("お気に入り"),live.filter(i=>i.favorite).length,st.view==="fav",()=>setView("fav"))),
     navBtn("URL",live.filter(i=>i.kind==="url").length,st.view==="url",()=>setView("url")),
     navBtn(L("ゴミ箱"),items.filter(i=>i.trashed).length,st.view==="trash",()=>setView("trash")));
+  // Status counts are what a click shows: the current folder, tag, view, type and search, any status.
+  const sc=new Map();filtered(true).forEach(i=>{const k=stOf(i);sc.set(k,(sc.get(k)||0)+1)});
+  const sl=$("statuses");sl.replaceChildren(...[NONE,...STATUSES.map(x=>x.id)].map(k=>{const b=navBtn(stName(k),sc.get(k)||0,st.status===k,()=>setStatusFilter(k));b.dataset.s=k;return b}));
+  const ad=document.createElement("button");ad.className="add";ad.textContent="＋";ad.setAttribute("aria-label",L("ステータスを追加"));ad.title=L("ステータスを追加");ad.onclick=addStatus;sl.append(ad);
   const f=$("folders");f.replaceChildren();
   const all=new Set();FOLDERS.forEach(x=>{const a=x.split("/");a.forEach((_,i)=>all.add(a.slice(0,i+1).join("/")))});
   const arch=[...ARCH].filter(q=>all.has(q)&&![...ARCH].some(a=>q.startsWith(a+"/"))).sort((a,b)=>a.localeCompare(b,"ja"));
@@ -364,14 +388,24 @@ function folderDlg(q){const on=ARCH.has(q);
     else try{localStorage.setItem(AKEY,JSON.stringify([...ARCH]))}catch(e){}
     st.sel.clear();render();toast(L(on?"「{t}」を戻しました":"「{t}」をアーカイブしました",{t:q.split("/").pop()}))})}
 {let t,p0;const side=$("side");
-  side.addEventListener("pointerdown",e=>{const b=e.target.closest("[data-q]");clearTimeout(t);if(!b||e.pointerType==="mouse")return;p0=[e.clientX,e.clientY];t=setTimeout(()=>{t="done";folderDlg(b.dataset.q)},450)});
+  const act=b=>b.dataset.s?editStatus(b.dataset.s):folderDlg(b.dataset.q);
+  side.addEventListener("pointerdown",e=>{const b=e.target.closest("[data-q],[data-s]");clearTimeout(t);if(!b||e.pointerType==="mouse"||b.dataset.s===NONE)return;p0=[e.clientX,e.clientY];t=setTimeout(()=>{t="done";act(b)},450)});
   ["pointerup","pointercancel","pointermove"].forEach(ev=>side.addEventListener(ev,e=>{if(ev==="pointermove"&&p0&&Math.hypot(e.clientX-p0[0],e.clientY-p0[1])<8)return;if(t!=="done")clearTimeout(t)}));
   side.addEventListener("click",e=>{if(t==="done"){t=null;e.stopImmediatePropagation()}},true);
-  side.addEventListener("contextmenu",e=>{const b=e.target.closest("[data-q]");if(!b)return;e.preventDefault();if(t!=="done"){clearTimeout(t);folderDlg(b.dataset.q)}})}
-function setView(v){st.view=v;st.folder=null;st.lib=null;st.tag=null;st.sel.clear();render()}
+  side.addEventListener("contextmenu",e=>{const b=e.target.closest("[data-q],[data-s]");if(!b)return;e.preventDefault();if(t!=="done"){clearTimeout(t);act(b)}})}
+function setView(v){st.view=v;st.folder=null;st.lib=null;st.tag=null;if(v==="all")st.status=null;st.sel.clear();render()}
 function setFolder(f){st.view="all";st.tag=null;st.folder=st.folder===f?null:f;st.lib=libOf(st.folder);st.sel.clear();render()}
 // A tag shows its items across the current library; clearing it goes back to the library's top folder.
 function setTag(t){st.view="all";st.folder=null;st.tag=st.tag===t?null:t;if(!st.tag&&st.lib)st.folder=st.lib;st.sel.clear();render()}
+function setStatusFilter(k){st.status=st.status===k?null:k;st.sel.clear();render()}
+function addStatus(){formDlg(L("ステータスを追加"),`<input id="fSt" required placeholder="${L("ステータス名")}">`,L("追加"),()=>{const n=$("fSt").value.trim();if(!n)return;
+  STATUSES.push({id:"s"+Date.now().toString(36),name:n});putStatuses();render()})}
+// Rename or delete a status. Deleting leaves its items without a status (their saved id no longer matches one).
+function editStatus(k){if(k===NONE)return;const x=STATUSES.find(s=>s.id===k);if(!x)return;
+  formDlg(L("ステータスを編集"),`<input id="fSt" required><button type="button" class="btn" id="fDel">${L("削除")}</button>`,L("保存"),()=>{
+    const n=$("fSt").value.trim();if(!n||n===stName(k))return;x.name=n;putStatuses();render()},
+  ()=>{$("fSt").value=stName(k);$("fDel").onclick=()=>{const n=items.filter(i=>stOf(i)===k).length;
+    confirmDlg(L("「{t}」を削除",{t:stName(k)}),L("{n} 件は未指定になります。",{n}),()=>{STATUSES=STATUSES.filter(s=>s!==x);if(st.status===k)st.status=null;putStatuses();render();toast(L("「{t}」を削除しました",{t:x.name}))})}})}
 function renderGrid(){
   list=filtered();
   const g=$("grid");liveIO?.disconnect();lazyEls=[];g.querySelectorAll("video").forEach(v=>{v.pause();v.removeAttribute("src");v.load()});g.replaceChildren();
@@ -382,12 +416,14 @@ function renderGrid(){
       return}
     const e=document.createElement("div");e.className="empty";e.textContent=st.view==="trash"?L("ゴミ箱は空です"):L("該当する資料はありません");g.append(e);return}
   if(st.layout==="fall")g.append(...Array.from({length:curCols()},()=>Object.assign(document.createElement("div"),{className:"mcol",_h:0})));
+  if(st.layout==="kanban")g.append(kanbanBoard());
   appendCards(0);
 }
 // Waterfall: each card goes, in list order, to the column that is shortest so far, judged by the card's expected
 // height. Unlike CSS columns, a card never moves to another column when thumbnails and text load.
 const cardH=it=>it.kind==="text"||it.kind==="url"?.9:(it.w&&it.h?Math.min(3,it.h/it.w):1)+.2;
-function placeCard(g,c,it){const cols=g.querySelectorAll(":scope>.mcol");if(!cols.length)return false;
+function placeCard(g,c,it){if(st.layout==="kanban"){const k=g.querySelector(`.kcol[data-s="${CSS.escape(stOf(it))}"]>.kb`);if(!k)return false;c.draggable=true;k.append(c);return true}
+  const cols=g.querySelectorAll(":scope>.mcol");if(!cols.length)return false;
   let m=cols[0];for(const k of cols)if(k._h<m._h)m=k;m.append(c);m._h+=cardH(it);return true}
 function relayoutFall(){const g=$("grid");if(st.layout!=="fall"||!g.querySelector(".card"))return;
   const cards=[...g.querySelectorAll(".card")].sort((a,b)=>a.dataset.i-b.dataset.i),n=curCols(),cols=g.querySelectorAll(":scope>.mcol");
@@ -395,6 +431,23 @@ function relayoutFall(){const g=$("grid");if(st.layout!=="fall"||!g.querySelecto
   cols.forEach(k=>k.remove());g.prepend(...Array.from({length:n},()=>Object.assign(document.createElement("div"),{className:"mcol",_h:0})));
   for(const c of cards)placeCard(g,c,list[+c.dataset.i]);
 }
+/* Kanban: one column per status; cards are dragged between columns (the selection moves together). On touch, select and use 「ステータス」. */
+function kanbanBoard(){
+  const cnt=new Map();list.forEach(i=>{const k=stOf(i);cnt.set(k,(cnt.get(k)||0)+1)});
+  const b=document.createElement("div");b.className="kboard";
+  for(const k of [NONE,...STATUSES.map(x=>x.id)]){
+    const c=document.createElement("div");c.className="kcol";c.dataset.s=k;c.innerHTML=`<div class="kh"><span></span><span class="n">${cnt.get(k)||0}</span></div><div class="kb"></div>`;c.firstChild.firstChild.textContent=stName(k);
+    if(k!==NONE){c.firstChild.ondblclick=()=>editStatus(k);c.firstChild.oncontextmenu=e=>{e.preventDefault();editStatus(k)}}
+    b.append(c)}
+  const a=document.createElement("button");a.className="kadd";a.textContent="＋";a.setAttribute("aria-label",L("ステータスを追加"));a.title=L("ステータスを追加");a.onclick=addStatus;b.append(a);
+  return b}
+{let drag=null;const g=$("grid"),col=e=>e.target.closest?.(".kcol");
+  g.addEventListener("dragstart",e=>{const c=e.target.closest?.(".card");if(!c||st.layout!=="kanban")return;const it=list[+c.dataset.i];
+    drag=st.sel.has(it.id)?selItems():[it];e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",it.name);c.classList.add("dragging")});
+  g.addEventListener("dragend",()=>{drag=null;g.querySelectorAll(".dragging,.kcol.over").forEach(x=>x.classList.remove("dragging","over"))});
+  g.addEventListener("dragover",e=>{const k=drag&&col(e);if(!k)return;e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect="move";g.querySelectorAll(".kcol.over").forEach(x=>x!==k&&x.classList.remove("over"));k.classList.add("over")});
+  g.addEventListener("drop",e=>{const k=drag&&col(e);if(!k)return;e.preventDefault();e.stopPropagation();const its=drag.filter(i=>stOf(i)!==k.dataset.s);drag=null;if(!its.length)return renderGrid();
+    putStatus(its,k.dataset.s);st.sel.clear();render()})}
 const CHUNK=300;let gridIO;
 function appendCards(start){
   const g=$("grid");g.querySelector(".more")?.remove();
@@ -406,7 +459,7 @@ function appendCards(start){
     else if(it.kind==="video"&&(it.file||it.dbx)){const v=document.createElement("video");v.className="th";v.muted=true;v.loop=true;v.playsInline=true;v.preload="none";
       if(it.w&&it.h)v.style.setProperty("--ar",it.w+"/"+it.h);
       if(it.thumbFile)v.poster=it.blobUrl;else if(it.dbx)posterOf(it).then(u=>{if(u&&!v.poster)v.poster=u});v._it=it;c.append(v);liveObs().observe(v)}
-    else{const im=document.createElement("img");im.className="th";if(it.w&&it.h)im.style.setProperty("--ar",it.w+"/"+it.h);im.loading="lazy";im.decoding="async";im.alt="";if(it.dbx)im.dataset.id=it.id;im.src=it.kind==="gif"&&it.file?(it.srcUrl||=URL.createObjectURL(it.file)):thumb(it);
+    else{const im=document.createElement("img");im.className="th";if(it.w&&it.h)im.style.setProperty("--ar",it.w+"/"+it.h);im.loading="lazy";im.decoding="async";im.alt="";im.draggable=false;if(it.dbx)im.dataset.id=it.id;im.src=it.kind==="gif"&&it.file?(it.srcUrl||=URL.createObjectURL(it.file)):thumb(it);
       if(it.dbx&&it.thumbable&&!thumbCache.has(it.id)){im._th=it;lazy(im)}
       // An image that fails to load collapses to nothing, which hides the card: show the blank and fetch it again from Dropbox.
       if(it.dbx)im.onerror=()=>{if(!im.src.startsWith("blob:"))return;im.src=BLANK;if(!it.thumbable)return;thumbCache.delete(it.id);thumbAsked.delete(it.id);queueThumb(it,true)}
@@ -433,7 +486,7 @@ function dbxLink(it){return it.link&&Date.now()<it.linkExp?Promise.resolve(it.li
 function renderSel(){
   const n=st.sel.size;$("selbar").hidden=!(n||st.selecting);$("selN").textContent=n;
   const tr=st.view==="trash";$("bRestore").hidden=!tr;$("bTrash").textContent=tr?L("ゴミ箱から削除"):L("ゴミ箱へ");
-  ["bFav","bTag","bMove","bLink"].forEach(x=>$(x).hidden=tr);
+  ["bFav","bTag","bMove","bLink","bStatus"].forEach(x=>$(x).hidden=tr);
   $("bUnlink").hidden=tr||!st.folder||!selItems().some(i=>i.also?.some(x=>under(x,st.folder)));
   if(dbxMode){$("bMove").hidden=true;$("bTrash").hidden=tr}else $("bTrash").hidden=false;
   $("selBtn").textContent=st.selecting?L("完了"):L("選択");
@@ -468,7 +521,7 @@ function useFocus(){if(st.sel.size)return true;const i=curIdx();if(i==null)retur
 function dropImp(){if(!st.imp)return;st.imp=false;st.sel.clear();renderGrid();renderSel();if(st.anchor!=null)focusCard(st.anchor)}
 function rangeTo(i){if(st.anchor==null)st.anchor=curIdx()??i;st.sel.clear();const a=Math.min(st.anchor,i),b=Math.max(st.anchor,i);for(let k=a;k<=b;k++)st.sel.add(list[k].id);renderGrid();renderSel();focusCard(i)}
 function keysDlg(){const m=MAC?"⌘":"Ctrl";
-  const K=[[L("一覧"),[["← → ↑ ↓",L("移動")],["Shift + ← → ↑ ↓",L("範囲選択")],["Home / End",L("先頭 / 末尾")],["Enter",L("開く")],["Space",L("選択")],[m+" + A",L("すべて選択")],["Esc",L("選択解除")],["F",L("お気に入り")],["T",L("タグを追加")],["M",L("移動")],["Delete",L("ゴミ箱へ")],["/ , "+m+" + F",L("検索")],["N",L("追加")],["+ / -",L("列数")],["1〜9 / 0",L("列数を指定 / 自動")],["S",L("サイドバー")],["G",L("グリッド / ウォーターフォール")]]],
+  const K=[[L("一覧"),[["← → ↑ ↓",L("移動")],["Shift + ← → ↑ ↓",L("範囲選択")],["Home / End",L("先頭 / 末尾")],["Enter",L("開く")],["Space",L("選択")],[m+" + A",L("すべて選択")],["Esc",L("選択解除")],["F",L("お気に入り")],["T",L("タグを追加")],["M",L("移動")],["Delete",L("ゴミ箱へ")],["/ , "+m+" + F",L("検索")],["N",L("追加")],["+ / -",L("列数")],["1〜9 / 0",L("列数を指定 / 自動")],["S",L("サイドバー")],["G",L("グリッド / ウォーターフォール")],["K",L("カンバン")]]],
     [L("ビューア"),[["← →",L("前 / 次")],["+ / - / 0",L("拡大 / 縮小 / 全体")],[m+" + "+L("ホイール"),L("拡大 / 縮小")],["1","100%"],["↑ ↓",L("前 / 次のページ")],["Space",L("再生 / 停止")],["F",L("お気に入り")],["T",L("タグ")],["Delete",L("ゴミ箱へ")],["Esc",L("閉じる")]]]];
   formDlg(L("キーボードショートカット"),K.map(([h,r])=>`<div class="keys"><b>${h}</b>${r.map(([k,l])=>`<span>${l}</span><kbd>${esc(k)}</kbd>`).join("")}</div>`).join(""),L("閉じる"),()=>{},()=>{$("dCancel").hidden=true;$("dlgForm").querySelector(".pri").focus()})}
 document.addEventListener("keydown",e=>{
@@ -490,6 +543,7 @@ document.addEventListener("keydown",e=>{
   if(k==="n"){$("addBtn").click();return}
   if(k==="s"){toggleSide();return}
   if(k==="g"){setLayout(st.layout==="fall"?"grid":"fall");return}
+  if(k==="k"){setLayout("kanban");return}
   if(k==="+"||k==="="||k==="-"){setCols(curCols()+(k==="-"?-1:1));return}
   if(/^[0-9]$/.test(k)){setCols(+k||null);return}
   if(k==="Enter"&&i!=null){e.preventDefault();openViewer(i);return}
@@ -507,8 +561,8 @@ $("q").oninput=e=>{st.q=e.target.value;renderSide();renderGrid()};
 $("type").onchange=e=>{st.type=e.target.value;$("typeW").classList.toggle("on",!!st.type);renderSide();renderGrid();$("wrap").scrollTop=0};
 $("sort").onchange=e=>{st.sort=e.target.value;if(st.sort==="random")st.rseed=Date.now()|0;$("shuffle").hidden=st.sort!=="random";renderGrid();$("wrap").scrollTop=0};
 $("shuffle").onclick=()=>{st.rseed=(Date.now()^Math.random()*1e9)|0;renderGrid();$("wrap").scrollTop=0};
-function setLayout(l){const ch=st.layout!==l;st.layout=l;$("grid").classList.toggle("fall",l==="fall");if(ch&&list.length)renderGrid();$("lGrid").classList.toggle("on",l==="grid");$("lFall").classList.toggle("on",l==="fall");try{localStorage.setItem("tehon-layout",l)}catch(e){}}
-$("lGrid").onclick=()=>setLayout("grid");$("lFall").onclick=()=>setLayout("fall");
+function setLayout(l){const ch=st.layout!==l;st.layout=l;$("grid").classList.toggle("fall",l==="fall");$("grid").classList.toggle("kanban",l==="kanban");$("size").hidden=l==="kanban";if(ch&&list.length)renderGrid();$("lGrid").classList.toggle("on",l==="grid");$("lFall").classList.toggle("on",l==="fall");$("lKan").classList.toggle("on",l==="kanban");try{localStorage.setItem("tehon-layout",l)}catch(e){}}
+$("lGrid").onclick=()=>setLayout("grid");$("lFall").onclick=()=>setLayout("fall");$("lKan").onclick=()=>setLayout("kanban");
 {let l=null;try{l=localStorage.getItem("tehon-layout")}catch(e){}setLayout(l||"fall")}
 // Column count; null follows the window width.
 const curCols=()=>{const g=$("grid");if(g.style.getPropertyValue("--cols"))return +g.style.getPropertyValue("--cols");const cs=getComputedStyle(g),cell=parseFloat(cs.getPropertyValue("--cell"))||170,gap=parseFloat(cs.columnGap)||10;return Math.max(1,Math.floor((g.clientWidth+gap)/(cell+gap)))};
@@ -545,6 +599,9 @@ $("bTag").onclick=()=>{const s=selItems();const cur=[...new Set(s.flatMap(i=>i.t
   formDlg(L("タグ"),`<input id="fTag" list="tagList" placeholder="${L("タグ名")}"><datalist id="tagList">${TAGS.map(t=>`<option value="${esc(t)}">`).join("")}</datalist><div class="tags" id="fCur"></div>`,L("追加"),()=>{const t=$("fTag").value.trim();if(!t)return;s.forEach(i=>{if(!i.tags.includes(t))i.tags.push(t)});save();render();toast(L("「{t}」を追加しました",{t}))},
   ()=>{for(const t of cur){const c=document.createElement("span");c.className="tag";c.textContent="# "+t;const x=document.createElement("button");x.type="button";x.textContent="✕";x.setAttribute("aria-label",L("タグを外す"));
     x.onclick=()=>{s.forEach(i=>i.tags=i.tags.filter(z=>z!==t));c.remove();save();render()};c.append(x);$("fCur").append(c)}})};
+$("bStatus").onclick=()=>{const s=selItems(),cur=new Set(s.map(stOf));
+  formDlg(L("ステータス"),`<div class="nav stpick">${[NONE,...STATUSES.map(x=>x.id)].map(k=>`<button type="button" data-s="${esc(k)}"${cur.size===1&&cur.has(k)?' class="on"':""}><span>${esc(stName(k))}</span></button>`).join("")}</div>`,L("閉じる"),()=>{},
+  ()=>{$("dlgForm").querySelector(".row").hidden=true;$("dlgForm").querySelector(".stpick").onclick=e=>{const b=e.target.closest("button");if(!b)return;$("dlg").hidden=true;putStatus(s,b.dataset.s);st.sel.clear();st.selecting=false;render();toast(L("{n} 件を「{t}」にしました",{n:s.length,t:stName(b.dataset.s)}));dropImp()}})};
 $("bMove").onclick=()=>formDlg(L("移動"),`<select id="fFolder">${folderOpts()}</select>`,L("移動"),()=>{const f=$("fFolder").value;const s=selItems();s.forEach(i=>{i.folder=f;if(i.also){i.also=i.also.filter(x=>x!==f);if(!i.also.length)delete i.also}});st.sel.clear();save();render();toast(L("{n} 件を {f} へ移動しました",{n:s.length,f}))});
 // Link: also show the selected items in another folder, without copying or moving the files.
 $("bLink").onclick=()=>formDlg(L("リンク"),`<select id="fFolder">${FOLDERS.filter(f=>!inArch(f)).map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("")}</select>`,L("追加"),()=>{const f=$("fFolder").value;if(!f)return;
@@ -883,6 +940,9 @@ async function saveText(it,value){
 $("vReload").onclick=()=>{const it=list[V.i];it.conflict=false;it.text=null;it.textP=null;loadV()};
 function renderFoot(it){
   const f=$("vfoot");f.replaceChildren();
+  {const sel=document.createElement("select");sel.className="vst";sel.setAttribute("aria-label",L("ステータス"));
+    sel.innerHTML=[NONE,...STATUSES.map(x=>x.id)].map(k=>`<option value="${esc(k)}">${esc(stName(k))}</option>`).join("");sel.value=stOf(it);
+    sel.onchange=()=>{putStatus([it],sel.value);renderSide()};sel.onkeydown=e=>e.stopPropagation();f.append(sel)}
   for(const t of it.tags){const s=document.createElement("span");s.className="tag";s.textContent="# "+t;const x=document.createElement("button");x.textContent="✕";x.setAttribute("aria-label",L("タグを外す"));x.onclick=()=>{it.tags=it.tags.filter(z=>z!==t);save();renderFoot(it);renderSide()};s.append(x);f.append(s)}
   const inp=document.createElement("input");inp.placeholder=L("＋ タグ");inp.id="vTagInput";inp.setAttribute("list","vTags");
   const dl=document.createElement("datalist");dl.id="vTags";dl.innerHTML=TAGS.map(t=>`<option value="${t}">`).join("");
