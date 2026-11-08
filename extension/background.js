@@ -13,8 +13,9 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // The popup asks for access to all sites right after handing over a save. On some systems the
 // permission prompt closes the popup before it can say "go", so a save also starts when access is
-// granted, or after a while.
+// granted, when the popup closes, or after a while.
 chrome.permissions.onAdded.addListener(() => release());
+chrome.runtime.onConnect.addListener(p => p.name === "popup" && p.onDisconnect.addListener(() => release()));
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== "save-image" || !info.srcUrl) return;
@@ -46,7 +47,7 @@ async function handle(m) {
       return { folders: await refreshFolders() };
     case "save":
       await remember(m);
-      enqueue(m, true);
+      enqueue(m, !!m.hold);
       return {};
     case "go":
       release();
@@ -115,7 +116,7 @@ async function run() {
   // Extension API calls keep the service worker alive between uploads.
   const alive = setInterval(() => chrome.runtime.getPlatformInfo(), 20e3);
   const saved = [];
-  // Recordings play in real time, one at a time; images download three at a time beside them.
+  // Recordings play in real time, one at a time; images download four at a time beside them.
   const take = video => {
     const i = queue.findIndex(t => !!t.vid === video);
     return i < 0 ? null : queue.splice(i, 1)[0];
@@ -137,7 +138,7 @@ async function run() {
     }
   };
   try {
-    await Promise.all([worker(false), worker(false), worker(false), worker(true)]);
+    await Promise.all([worker(false), worker(false), worker(false), worker(false), worker(true)]);
     const tagged = saved.filter(s => s.tags.length);
     const sourced = saved.filter(s => s.page);
     if (tagged.length || sourced.length) {

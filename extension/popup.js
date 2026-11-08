@@ -5,6 +5,12 @@ const $ = id => document.getElementById(id);
 const send = m => chrome.runtime.sendMessage(m);
 const splitTags = s => [...new Set(s.split(/[,、\s]+/).map(t => t.trim()).filter(Boolean))];
 
+// The worker starts a held save when this popup closes (the port drops), e.g. closed by the permission prompt.
+chrome.runtime.connect({ name: "popup" });
+let allSites = false, asked = false;
+chrome.permissions.contains({ origins: ["<all_urls>"] }).then(v => (allSites = v));
+chrome.storage.local.get("askedAll").then(v => (asked = !!v.askedAll));
+
 let tab = null, page = null, images = [], sel = new Set(), lastClick = -1, recent = [];
 
 async function init() {
@@ -211,10 +217,16 @@ $("save").onclick = async () => {
   const items = visible()
     .filter(i => sel.has(i.key))
     .map(i => (i.vid ? { vid: i.vid, url: i.url } : { url: i.url }));
-  const handed = send({ type: "save", tabId: tab.id, page: page.url, items, folder: folderValue(), tags: splitTags($("tags").value) });
-  await chrome.permissions.request({ origins: ["<all_urls>"] }).catch(() => false);
-  await handed;
-  send({ type: "go" });
+  // Asked once only; later saves start right away (images that need it are then fetched in the page).
+  const ask = !allSites && !asked;
+  const handed = send({ type: "save", hold: ask, tabId: tab.id, page: page.url, items, folder: folderValue(), tags: splitTags($("tags").value) });
+  if (ask) {
+    asked = true;
+    chrome.storage.local.set({ askedAll: true });
+    allSites = await chrome.permissions.request({ origins: ["<all_urls>"] }).catch(() => false);
+    await handed;
+    send({ type: "go" });
+  }
   sel.clear();
   [...$("grid").children].forEach(c => c.classList.remove("on"));
   updateCount();
