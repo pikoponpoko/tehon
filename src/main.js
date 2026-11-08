@@ -188,10 +188,12 @@ async function loadOgp(it){
   if(dbxMode)dbx.upload(OGP_DIR.slice(1),new File([blob],name,{type:"image/jpeg"}),true).then(e=>ogpFiles.set(name,e.id)).catch(()=>{});
   return URL.createObjectURL(blob);
 }
+// Card label: host and readable path only. Query strings (search pages etc.) are long and say nothing.
+function shortUrl(u){try{const x=new URL(u);let p=x.pathname==="/"?"":x.pathname;try{p=decodeURI(p)}catch(e){}return x.host.replace(/^www\./,"")+p}catch(e){return u.replace(/^https?:\/\//,"")}}
 function urlCard(c,it){
   const u=thumbCache.get(it.id);
   if(u){const im=document.createElement("img");im.className="th";im.decoding="async";im.alt="";im.src=u;c.prepend(im);return}
-  const d=document.createElement("div");d.className="urlth";d.innerHTML=`<b></b><span></span>`;d.firstChild.textContent=it.name;d.lastChild.textContent=it.url.replace(/^https?:\/\//,"");c.prepend(d);
+  const d=document.createElement("div");d.className="urlth";d.innerHTML=`<b></b><span></span>`;d.firstChild.textContent=it.name;d.lastChild.textContent=shortUrl(it.url);c.prepend(d);
   urlThumb(it).then(u=>{if(u&&d.isConnected){d.remove();urlCard(c,it)}});
 }
 // Full-size images: temporary link (dbxLink) + decoded Image kept for a few items, so opening and paging are instant.
@@ -234,7 +236,21 @@ function flushSave(){if(saveT==null)return;clearTimeout(saveT);saveT=null;$("syn
 // Not while a file is open in the viewer, where a text may be being edited.
 let hiddenAt=0;
 addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"){hiddenAt=Date.now();flushSave();return}
-  if(dbxMode&&hiddenAt&&Date.now()-hiddenAt>20000&&$("viewer").hidden)loadDropbox(true);hiddenAt=0});
+  if(dbxMode&&(liveDue||hiddenAt&&Date.now()-hiddenAt>20000)&&$("viewer").hidden)liveDue=false,loadDropbox(true);hiddenAt=0});
+// Live: a longpoll on the whole app folder. Files added elsewhere (the browser extension, other devices) show up without
+// reloading. This device's own file and the URL thumbnails it writes are ignored. Hidden or viewer open: reload later.
+let watching=false,liveDue=false,liveT=0;
+async function watchDropbox(){if(watching)return;watching=true;let cur=null;
+  const wait=ms=>new Promise(r=>setTimeout(r,ms));
+  while(dbxMode){try{
+    cur??=await dbx.latestCursor();
+    const w=await dbx.waitChange(cur);if(w.backoff)await wait(w.backoff*1000);if(!w.changes)continue;
+    const c=await dbx.changesSince(cur);cur=c.cursor;
+    const mine=(dbx.META_DIR+"/devices/"+dbx.deviceId()+".json").toLowerCase(),og=OGP_DIR.toLowerCase()+"/";
+    if(c.entries.some(e=>e.path_lower!==mine&&!e.path_lower.startsWith(og)))liveReload();
+  }catch(e){cur=null;await wait(30000)}}
+  watching=false}
+function liveReload(){clearTimeout(liveT);liveT=setTimeout(()=>{if(document.visibilityState==="hidden"||!$("viewer").hidden)return void(liveDue=true);liveDue=false;loadDropbox(true)},1500)}
 const laterSave=()=>{clearTimeout(saveT);saveT=setTimeout(flushSave,1500);saveCache()};
 function putStatus(its,k){const s=k===NONE?null:k,t=Date.now();its.forEach(i=>i.status=s);
   if(dbxMode&&own){own.status=own.status||{};its.forEach(i=>own.status[i.id]={s,updatedAt:t});laterSave()}else save()}
@@ -943,7 +959,7 @@ async function openFmt(it,ph){
   }catch(e){if(live()){$("vState").textContent="";toast(L("プレビューできない形式です"))}}
 }
 $("vPgUp").onclick=()=>V.doc&&showPage(V.doc.p-1);$("vPgDn").onclick=()=>V.doc&&showPage(V.doc.p+1);
-function closeViewer(){settle(true);endFmt();V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");vf.removeAttribute("src");$("viewer").style.opacity="";$("viewer").style.transition="";listBack()}
+function closeViewer(){settle(true);if(liveDue)liveReload();endFmt();V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");vf.removeAttribute("src");$("viewer").style.opacity="";$("viewer").style.transition="";listBack()}
 // Back to the list where it was: the scroll position stays, and only moves if the last shown item is out of view.
 function listBack(){const w=$("wrap"),g=$("grid"),top=w.scrollTop;renderGrid();const c=cardAt(V.i);
   while(w.scrollHeight<top+w.clientHeight&&g.querySelector(".more"))appendCards(g.querySelectorAll(".card").length);
@@ -1121,6 +1137,7 @@ if(cached){$("sync").lastChild.textContent="Dropbox";openFolderQ(false);await pr
 render();painted=true;
 if(authErr)toast(L(authErr));
 const loading=conn?loadDropbox(cached):null;
+if(loading)loading.then(watchDropbox);
 if(new URLSearchParams(location.search).has("share"))takeShared();
 // Sent from the Android share menu (manifest share_target): the service worker left it in the "tehon-share" cache.
 async function takeShared(){

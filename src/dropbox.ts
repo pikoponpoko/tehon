@@ -232,6 +232,27 @@ export async function listAll(onPage?: (n: number) => void): Promise<FileMeta[]>
   return out.filter(e => e.path_lower !== META_DIR && !e.path_lower.startsWith(META_DIR + "/"));
 }
 
+/* ---------- live changes: list_folder/longpoll on a cursor for the whole app folder ---------- */
+export async function latestCursor(): Promise<string> {
+  return (await rpc("files/list_folder/get_latest_cursor", { path: "", recursive: true })).cursor;
+}
+/** Waits up to ~`timeout` s for a change after `cursor`. Needs no token (notify endpoint). */
+export async function waitChange(cursor: string, timeout = 90): Promise<{ changes: boolean; backoff?: number }> {
+  const r = await fetch("https://notify.dropboxapi.com/2/files/list_folder/longpoll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cursor, timeout }) });
+  if (!r.ok) throw new DropboxError(r.status, await r.text());
+  return r.json();
+}
+/** Entries changed after `cursor`, and the cursor to wait on next. */
+export async function changesSince(cursor: string): Promise<{ entries: FileMeta[]; cursor: string }> {
+  const entries: FileMeta[] = [];
+  for (;;) {
+    const r = await rpc("files/list_folder/continue", { cursor });
+    entries.push(...r.entries);
+    cursor = r.cursor;
+    if (!r.has_more) return { entries, cursor };
+  }
+}
+
 export const THUMB_EXT = ["jpg", "jpeg", "png", "tiff", "tif", "gif", "webp", "ppm", "bmp"];
 
 /* ---------- local cache of thumbnails and text previews (IndexedDB "tehon-cache2") ----------
