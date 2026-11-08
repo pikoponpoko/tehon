@@ -166,7 +166,8 @@ function flushLazy(){lazyRaf=0;
   els.sort((a,b)=>a[1]-b[1]||a[2]-b[2]);
   for(const [el] of els)el._tx?textPreview(el._tx).then(el._put):queueThumb(el._th);
 }
-/* URL: preview image (og:image) via /api/ogp, shrunk to JPEG and kept in /.tehon/ogp so it survives the page changing */
+/* URL: preview image (og:image) via /api/ogp, shrunk to JPEG and kept in /.tehon/ogp so it survives the page changing.
+   Overwritten, not added: cards drawn from the cache before the folder is listed would add "name (n).jpg" each launch. */
 const OGP_DIR=dbx.META_DIR+"/ogp";let ogpFiles=new Map(),ogpBusy=0;const ogpQ=[];
 const urlHash=s=>{let a=0x811c9dc5,b=0x9747b28c;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);a=Math.imul(a^c,16777619);b=Math.imul(b^c,2246822507)}return (a>>>0).toString(16).padStart(8,"0")+(b>>>0).toString(16).padStart(8,"0")};
 function urlThumb(it){
@@ -184,7 +185,7 @@ async function loadOgp(it){
   const bm=await createImageBitmap(await r.blob()),k=Math.min(1,640/bm.width);
   const cv=document.createElement("canvas");cv.width=Math.round(bm.width*k);cv.height=Math.round(bm.height*k);cv.getContext("2d").drawImage(bm,0,0,cv.width,cv.height);bm.close();
   const blob=await new Promise(ok=>cv.toBlob(ok,"image/jpeg",.85));if(!blob)return null;
-  if(dbxMode)dbx.upload(OGP_DIR.slice(1),new File([blob],name,{type:"image/jpeg"})).then(e=>ogpFiles.set(name,e.id)).catch(()=>{});
+  if(dbxMode)dbx.upload(OGP_DIR.slice(1),new File([blob],name,{type:"image/jpeg"}),true).then(e=>ogpFiles.set(name,e.id)).catch(()=>{});
   return URL.createObjectURL(blob);
 }
 function urlCard(c,it){

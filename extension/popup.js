@@ -205,12 +205,16 @@ const folderValue = () => {
 $("save").onclick = async () => {
   if (!sel.size) return;
   // Images often live on other hosts (CDNs). Access to all sites is asked once, on the first save;
-  // without it, images the page itself can fetch still save. Must run first, inside the click.
-  await chrome.permissions.request({ origins: ["<all_urls>"] }).catch(() => false);
+  // without it, images the page itself can fetch still save. The request must run inside the click.
+  // The prompt can close the popup, so the save is handed over first and the worker starts it once
+  // access is settled ("go", or when access is granted, or after a while).
   const items = visible()
     .filter(i => sel.has(i.key))
     .map(i => (i.vid ? { vid: i.vid, url: i.url } : { url: i.url }));
-  await send({ type: "save", tabId: tab.id, page: page.url, items, folder: folderValue(), tags: splitTags($("tags").value) });
+  const handed = send({ type: "save", tabId: tab.id, page: page.url, items, folder: folderValue(), tags: splitTags($("tags").value) });
+  await chrome.permissions.request({ origins: ["<all_urls>"] }).catch(() => false);
+  await handed;
+  send({ type: "go" });
   sel.clear();
   [...$("grid").children].forEach(c => c.classList.remove("on"));
   updateCount();
@@ -231,7 +235,11 @@ function showJob(job) {
   $("status").textContent = running
     ? `${job.recording ? "録画中" : "保存中"} ${job.done + job.failed} / ${job.total}`
     : job.failed
-      ? `${job.failed}件保存できませんでした`
+      ? job.error === "auth"
+        ? "Dropboxに再接続してください"
+        : job.error === "space"
+          ? "Dropboxの容量が足りません"
+          : `${job.failed}件保存できませんでした`
       : `${job.done}件保存しました`;
 }
 
