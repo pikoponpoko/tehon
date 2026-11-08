@@ -188,10 +188,12 @@ async function loadOgp(it){
   if(dbxMode)dbx.upload(OGP_DIR.slice(1),new File([blob],name,{type:"image/jpeg"}),true).then(e=>ogpFiles.set(name,e.id)).catch(()=>{});
   return URL.createObjectURL(blob);
 }
+// Card label: host and readable path only. Query strings (search pages etc.) are long and say nothing.
+function shortUrl(u){try{const x=new URL(u);let p=x.pathname==="/"?"":x.pathname;try{p=decodeURI(p)}catch(e){}return x.host.replace(/^www\./,"")+p}catch(e){return u.replace(/^https?:\/\//,"")}}
 function urlCard(c,it){
   const u=thumbCache.get(it.id);
   if(u){const im=document.createElement("img");im.className="th";im.decoding="async";im.alt="";im.src=u;c.prepend(im);return}
-  const d=document.createElement("div");d.className="urlth";d.innerHTML=`<b></b><span></span>`;d.firstChild.textContent=it.name;d.lastChild.textContent=it.url.replace(/^https?:\/\//,"");c.prepend(d);
+  const d=document.createElement("div");d.className="urlth";d.innerHTML=`<b></b><span></span>`;d.firstChild.textContent=it.name;d.lastChild.textContent=shortUrl(it.url);c.prepend(d);
   urlThumb(it).then(u=>{if(u&&d.isConnected){d.remove();urlCard(c,it)}});
 }
 // Full-size images: temporary link (dbxLink) + decoded Image kept for a few items, so opening and paging are instant.
