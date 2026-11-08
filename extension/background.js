@@ -160,13 +160,18 @@ async function run() {
 
 async function fetchImage(url, tabId) {
   if (!url.startsWith("blob:")) {
-    try {
-      const r = await fetch(url, { credentials: "include" });
-      if (r.ok) {
-        const b = await r.blob();
-        if (isImage(b, url)) return b;
-      }
-    } catch {}
+    // Without access to the site, only CORS-open images can be fetched here, and those
+    // ("Access-Control-Allow-Origin: *", e.g. Google image results) refuse requests with cookies.
+    const granted = await chrome.permissions.contains({ origins: [new URL(url).origin + "/*"] }).catch(() => false);
+    for (const credentials of granted ? ["include", "omit"] : ["omit", "include"]) {
+      try {
+        const r = await fetch(url, { credentials });
+        if (r.ok) {
+          const b = await r.blob();
+          if (isImage(b, url)) return b;
+        }
+      } catch {}
+    }
   }
   if (tabId == null) throw new Error("fetch");
   const [res] = await chrome.scripting.executeScript({ target: { tabId }, func: fetchInPage, args: [url] });

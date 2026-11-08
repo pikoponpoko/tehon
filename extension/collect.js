@@ -149,7 +149,10 @@ export async function recordVideo(vid) {
 // Fallback fetch from inside the page, for blob: URLs and images that need the page's cookies.
 export async function fetchInPage(url) {
   try {
-    const r = await fetch(url, { credentials: "include" });
+    // Cookies first (sites that check the login); CDNs answering "Access-Control-Allow-Origin: *"
+    // refuse requests with cookies, so those are fetched again without them.
+    let r = await fetch(url, { credentials: "include" }).catch(() => null);
+    if (!r?.ok) r = await fetch(url, { credentials: "omit" });
     if (!r.ok) return null;
     const b = await r.blob();
     return await new Promise(res => {
