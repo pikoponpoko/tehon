@@ -283,11 +283,46 @@ async function loadDropbox(keep=false){
     openFolderQ(true);
     saveCache();dbx.cachePrune(new Set([...out.map(i=>i.id),...ogpFiles.values()])).catch(()=>{});
     $("sync").lastChild.textContent="Dropbox";$("toast").hidden=true;render();
+    drainInbox();
   }catch(e){
     dbxPending=false;if(!dbxMode)render();
     $("sync").lastChild.textContent=dbxMode?"Dropbox":L("未接続");
     toast(e instanceof dbx.DropboxError&&e.status===401?L("Dropboxに再接続してください"):L("Dropboxを読み込めませんでした"));
   }
+}
+// Inbox (/.tehon/inbox/*.json, see dropbox.ts): images found elsewhere, e.g. by Claude. Each is fetched through /api/ogp
+// and saved as a file in its folder; one that can't be fetched is kept as a URL so nothing is lost.
+let draining=false;
+async function drainInbox(){
+  if(draining||!own)return;draining=true;
+  try{
+    const files=await dbx.listInbox();if(!files.length)return;
+    let n=0;const t=Date.now();
+    for(const f of files){
+      let j;try{j=await dbx.readJson(f.id)}catch(e){continue}
+      for(const x of j.items||[]){
+        const folder=(x.folder||"").replace(/^\/+|\/+$/g,""),tags=x.tags||[];
+        toast(L("受け取り中 {i}",{i:n+1}));
+        try{
+          const r=await fetch(x.data||"/api/ogp?url="+encodeURIComponent(x.url));
+          const type=(r.headers.get("Content-Type")||"").split(";")[0];
+          if(!r.ok||!type.startsWith("image/"))throw 0;
+          let base=x.name;if(!base){try{base=decodeURIComponent((x.url||"").split(/[?#]/)[0].split("/").pop())}catch(e){}}
+          base=(base||"image").replace(/[\\/:*?"<>|]/g,"_");
+          const name=/\.[a-z0-9]{2,5}$/i.test(base)?base:base+"."+type.split("/")[1].replace("jpeg","jpg").replace("svg+xml","svg");
+          const e=await dbx.upload(folder,new File([await r.blob()],name,{type}));
+          own.items[e.id]={tags,favorite:false,trashed:false,updatedAt:t};
+          const src=x.source||x.url;if(src)(own.sources||={})[e.id]={url:src,updatedAt:t};
+        }catch(e){
+          const url=x.source||x.url;if(!url)continue;
+          own.urls["inbox-"+t+"-"+n]={name:x.name||url,url,folder,tags,favorite:false,trashed:false,addedAt:t,updatedAt:t};
+        }
+        n++;
+      }
+      await dbx.remove(f.id).catch(()=>{});
+    }
+    if(n){await dbx.saveDevice(own);await loadDropbox(true);toast(L("受け取り箱から {n} 件を追加しました",{n}))}
+  }catch(e){}finally{draining=false}
 }
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
 const folderOpts=sel=>(dbxMode?["",...FOLDERS]:FOLDERS).map(f=>`<option value="${esc(f)}"${f===sel?" selected":""}>${f?esc(f):"/"}</option>`).join("");

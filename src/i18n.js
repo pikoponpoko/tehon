@@ -34,7 +34,7 @@ const EN={
   "{n} 件を {f} へ移動しました":"Moved {n|item} to {f}","{n} 件を {f} にリンクしました":"Linked {n|item} to {f}","{n} 件のリンクを外しました":"Removed {n|link}",
   "ファイル（画像・動画・テキスト）":"File (image, video, text)","Eagleライブラリ（.library フォルダ）":"Eagle library (.library folder)",
   "URLを入力してください":"Enter a URL","URLを追加しました":"URL added",
-  "{n} 件を追加しました":"Added {n|item}","（{n} 件はアップロードできませんでした）":" ({n|item} couldn't be uploaded)",
+  "{n} 件を追加しました":"Added {n|item}","受け取り中 {i}":"Receiving {i}","受け取り箱から {n} 件を追加しました":"Added {n|item} from the inbox","（{n} 件はアップロードできませんでした）":" ({n|item} couldn't be uploaded)",
   "（このデモでは再読み込みで消えます）":" (removed on reload in this demo)","画像・動画・テキストファイルを選んでください":"Choose image, video or text files",
   "アップロード中 {i} / {n}":"Uploading {i} / {n}","読み込み中 {n} 件":"Loading {n}",
   "Dropboxに保存できませんでした":"Couldn't save to Dropbox","Dropboxに再接続してください":"Reconnect Dropbox","Dropboxを読み込めませんでした":"Couldn't load Dropbox",
