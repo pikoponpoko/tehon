@@ -438,6 +438,21 @@ export async function saveDevice(d: DeviceFile) {
   });
 }
 
+/* ---------- inbox: /.tehon/inbox/*.json ----------
+   Written by tools that can only write text to Dropbox (e.g. Claude through the Dropbox connector):
+   { "items": [{ "url": "https://… (image, or a page with og:image)", "folder": "library/sub", "name"?: "file name",
+                 "source"?: "page the image came from", "tags"?: ["…"], "data"?: "data:image/png;base64,…" }] }
+   Tehon fetches each image, adds it as a file, and removes the inbox file. */
+export interface InboxItem { url?: string; data?: string; folder?: string; name?: string; source?: string; tags?: string[] }
+export async function listInbox(): Promise<FileMeta[]> {
+  try {
+    return (await rpc("files/list_folder", { path: META_DIR + "/inbox" })).entries.filter((e: FileMeta) => e[".tag"] === "file" && e.name.endsWith(".json"));
+  } catch (e) {
+    if (e instanceof DropboxError && e.summary.startsWith("path/not_found")) return [];
+    throw e;
+  }
+}
+
 /* ---------- used by the Eagle importer ---------- */
 /** Every entry under `path` (recursive), including Tehon's own folders. */
 export async function listTree(path: string): Promise<FileMeta[]> {
