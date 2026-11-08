@@ -502,6 +502,16 @@ export async function remove(path: string) {
   await rpc("files/delete_v2", { path });
 }
 
+/** Moves files to Dropbox's deleted files (restorable there). Returns, in order, whether each one was deleted. */
+export async function removeBatch(paths: string[]): Promise<boolean[]> {
+  const out: boolean[] = [];
+  for (let i = 0; i < paths.length; i += 1000) {
+    const r = await batch("files/delete_batch", "files/delete_batch/check", { entries: paths.slice(i, i + 1000).map(path => ({ path })) });
+    out.push(...r.entries.map((e: any) => e[".tag"] === "success"));
+  }
+  return out;
+}
+
 /** Tags etc. carried over from Eagle, keyed by file path (/.tehon/eagle-manifest.json). Device data overrides it.
  *  Source page URLs are in /.tehon/eagle-sources.json ({ path: url }) and are merged in as `url`. */
 export interface EagleManifest { files: Record<string, { tags: string[]; favorite: boolean; trashed: boolean; addedAt?: number; url?: string }>; urls: Omit<UrlMeta, "updatedAt">[] }

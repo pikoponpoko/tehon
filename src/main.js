@@ -243,7 +243,7 @@ function dbxItem(e,m){
   const p=e.path_display.slice(1);const folder=p.includes("/")?p.slice(0,p.lastIndexOf("/")):"";
   const d=e.media_info?.metadata?.dimensions;
   const f=["svg","avif","ico"].includes(ext)?"native":kind==="image"&&!VIEW_EXT.includes(ext)?fmt.fmtOf(ext):null;
-  return {id:e.id,name:e.name,folder,kind,dbx:true,size:e.size,path:e.path_display,rev:e.rev,badge:kind==="image"&&!VIEW_EXT.includes(ext)?ext||"file":null,fmt:f,
+  return {id:e.id,name:e.name,folder,kind,dbx:true,size:e.size,hash:e.content_hash,path:e.path_display,rev:e.rev,badge:kind==="image"&&!VIEW_EXT.includes(ext)?ext||"file":null,fmt:f,
     viewable:kind!=="image"||VIEW_EXT.includes(ext)||!!f,thumbable:dbx.THUMB_EXT.includes(ext)||!!f,
     tags:m?.tags||[],favorite:!!m?.favorite,trashed:!!m?.trashed,url:null,w:d?.width||0,h:d?.height||0,
     addedAt:Date.parse(e.client_modified||e.server_modified||"")||0};
@@ -332,7 +332,17 @@ const st={rseed:Date.now()|0,layout:"fall",view:"all",folder:null,lib:null,tag:n
 let list=[];
 const libOf=f=>f?f.split("/")[0]:null,inLib=lib=>it=>inF(it,lib);
 const qMatch=q=>it=>(it.name+" "+fsOf(it).join(" ")+" "+it.tags.join(" ")+" "+(it.url||"")+" "+(it.source||"")).toLowerCase().includes(q);
+// Duplicates: files with the same Dropbox content hash, or URLs with the same address. The first of each group is kept:
+// not in the trash, without a " (2)"-style name, with a status, favorite or tags, added first.
+const DUPN=/ \(\d+\)(?=\.[^.]*$|$)/;
+function dupGroups(){const m=new Map();
+  for(const it of items){const k=it.hash&&it.size?"h:"+it.hash:it.kind==="url"&&it.url?"u:"+it.url:null;if(!k)continue;if(!m.has(k))m.set(k,[]);m.get(k).push(it)}
+  const r=it=>[+!!it.trashed,+DUPN.test(it.name),+!it.status,+!it.favorite,-it.tags.length,it.addedAt||0];
+  const cmp=(a,b)=>{const x=r(a),y=r(b);for(let i=0;i<x.length;i++)if(x[i]!==y[i])return x[i]-y[i];return (a.path||a.id)<(b.path||b.id)?-1:1};
+  return [...m.values()].filter(g=>g.length>1).map(g=>g.sort(cmp))}
+let dupOf=new Map();
 function filtered(anyStatus){
+  if(st.view==="dup"){const gs=dupGroups();dupOf=new Map();gs.forEach((g,k)=>g.forEach((it,j)=>dupOf.set(it.id,{g:k,x:j>0})));return gs.flat()}
   const q=st.q.trim().toLowerCase();
   const ia=!!(st.folder||st.lib)&&inArch(st.folder||st.lib);
   let l=items.filter(it=>st.view==="trash"?it.trashed:!it.trashed&&(ia||!gone(it)));
@@ -376,6 +386,8 @@ function renderSide(){
     favBtn(navBtn(L("お気に入り"),live.filter(i=>i.favorite).length,st.view==="fav",()=>setView("fav"))),
     navBtn("URL",live.filter(i=>i.kind==="url").length,st.view==="url",()=>setView("url")),
     navBtn(L("ゴミ箱"),items.filter(i=>i.trashed).length,st.view==="trash",()=>setView("trash")));
+  const nd=dupGroups().reduce((n,g)=>n+g.length-1,0);
+  if(nd||st.view==="dup")lib.append(navBtn(L("重複"),nd,st.view==="dup",()=>setView("dup")));
   // Status counts are what a click shows: the current folder, tag, view, type and search, any status.
   const sc=new Map();filtered(true).forEach(i=>{const k=stOf(i);sc.set(k,(sc.get(k)||0)+1)});
   const sl=$("statuses");sl.replaceChildren(...[NONE,...STATUSES.map(x=>x.id)].map(k=>{const b=navBtn(stName(k),sc.get(k)||0,st.status===k,()=>setStatusFilter(k));b.dataset.s=k;return b}));
@@ -449,22 +461,26 @@ function renderGrid(){
   list=filtered();
   const g=$("grid");liveIO?.disconnect();lazyEls=[];g.querySelectorAll("video").forEach(v=>{v.pause();v.removeAttribute("src");v.load()});g.replaceChildren();
   g.classList.toggle("selecting",st.selecting||st.sel.size>0);
+  const dv=st.view==="dup";g.classList.toggle("dups",dv);g.classList.toggle("fall",!dv&&st.layout==="fall");g.classList.toggle("kanban",!dv&&st.layout==="kanban");
+  $("dupbar").hidden=!dv||!list.length;if(dv)$("bDup").textContent=L("{n} 件を削除",{n:list.length-new Set(list.map(i=>dupOf.get(i.id).g)).size});
   if(!list.length){
     if(!items.length&&st.view!=="trash"){
       if(!dbxMode&&!dbxPending&&dbx.isConfigured()){const b=document.createElement("button");b.className="btn";b.textContent=L("Dropboxに接続");b.onclick=()=>dbx.startAuth();const e=document.createElement("div");e.className="empty";e.append(b);g.append(e)}
       return}
-    const e=document.createElement("div");e.className="empty";e.textContent=st.view==="trash"?L("ゴミ箱は空です"):L("該当する資料はありません");g.append(e);return}
-  if(st.layout==="fall")g.append(...Array.from({length:curCols()},()=>Object.assign(document.createElement("div"),{className:"mcol",_h:0})));
-  if(st.layout==="kanban")g.append(kanbanBoard());
+    const e=document.createElement("div");e.className="empty";e.textContent=st.view==="trash"?L("ゴミ箱は空です"):dv?L("重複はありません"):L("該当する資料はありません");g.append(e);return}
+  if(st.layout==="fall"&&!dv)g.append(...Array.from({length:curCols()},()=>Object.assign(document.createElement("div"),{className:"mcol",_h:0})));
+  if(st.layout==="kanban"&&!dv)g.append(kanbanBoard());
   appendCards(0);
 }
 // Waterfall: each card goes, in list order, to the column that is shortest so far, judged by the card's expected
 // height. Unlike CSS columns, a card never moves to another column when thumbnails and text load.
 const cardH=it=>it.kind==="text"||it.kind==="url"?.9:(it.w&&it.h?Math.min(3,it.h/it.w):1)+.2;
-function placeCard(g,c,it){if(st.layout==="kanban"){const k=g.querySelector(`.kcol[data-s="${CSS.escape(stOf(it))}"]>.kb`);if(!k)return false;c.draggable=true;k.append(c);return true}
+function placeCard(g,c,it){if(st.view==="dup"){const d=dupOf.get(it.id);if(!d)return false;c.classList.toggle("dupx",d.x);
+    let b=g.querySelector(`:scope>.dg[data-g="${d.g}"]`);if(!b){b=document.createElement("div");b.className="dg";b.dataset.g=d.g;g.append(b)}b.append(c);return true}
+  if(st.layout==="kanban"){const k=g.querySelector(`.kcol[data-s="${CSS.escape(stOf(it))}"]>.kb`);if(!k)return false;c.draggable=true;k.append(c);return true}
   const cols=g.querySelectorAll(":scope>.mcol");if(!cols.length)return false;
   let m=cols[0];for(const k of cols)if(k._h<m._h)m=k;m.append(c);m._h+=cardH(it);return true}
-function relayoutFall(){const g=$("grid");if(st.layout!=="fall"||!g.querySelector(".card"))return;
+function relayoutFall(){const g=$("grid");if(st.layout!=="fall"||st.view==="dup"||!g.querySelector(".card"))return;
   const cards=[...g.querySelectorAll(".card")].sort((a,b)=>a.dataset.i-b.dataset.i),n=curCols(),cols=g.querySelectorAll(":scope>.mcol");
   if(cols.length===n)return;
   cols.forEach(k=>k.remove());g.prepend(...Array.from({length:n},()=>Object.assign(document.createElement("div"),{className:"mcol",_h:0})));
@@ -507,6 +523,7 @@ function appendCards(start){
     const ck=document.createElement("span");ck.className="chk";ck.textContent="✓";c.append(ck);
     const m=document.createElement("div");m.className="meta";m.innerHTML=`<span class="nm"></span><button class="fv${it.favorite?" on":""}" aria-label="${L("お気に入り")}">${HEART}</button>`;
     m.firstChild.textContent=it.name;c.append(m);
+    if(st.view==="dup"){const f=document.createElement("div");f.className="fd";f.textContent="/"+it.folder;c.append(f)}
     if(!placeCard(g,c,it))frag.append(c);
   });
   g.append(frag);
@@ -633,6 +650,21 @@ function trashSel(){
   s.forEach(i=>i.trashed=true);st.sel.clear();save();render();toast(L("{n} 件をゴミ箱へ移動しました",{n:s.length}));
 }
 $("bTrash").onclick=trashSel;
+// Delete duplicates: each group's first item stays and takes over the others' folders (as links), tags, favorite, status
+// and source page; the others go to Dropbox's deleted files (URLs are marked deleted).
+$("bDup").onclick=()=>{const gs=dupGroups(),n=gs.reduce((k,g)=>k+g.length-1,0);if(!n)return;
+  confirmDlg(L("{n} 件の重複を削除",{n}),L("同じ内容のものを1つ残して削除します。残すほうに元のフォルダ（リンク）とタグをまとめます。Dropboxでは「削除済みファイル」から一定期間復元できます。"),async()=>{
+    toast(L("削除中"));const files=gs.flatMap(g=>g.slice(1)).filter(i=>i.kind!=="url"&&i.dbx);
+    let ok=new Set();
+    try{const r=dbxMode&&files.length?await dbx.removeBatch(files.map(i=>i.id)):[];files.forEach((i,k)=>r[k]&&ok.add(i.id))}catch(e){toast(L("削除できませんでした"));return}
+    const t=Date.now(),del=new Set();
+    for(const [a,...rest] of gs)for(const b of rest){if(b.kind==="url"){if(dbxMode&&own)own.urls[b.key]={...metaOf(b),deleted:true,updatedAt:t}}else if(!ok.has(b.id))continue;
+      del.add(b.id);a.tags=[...new Set([...a.tags,...b.tags])];a.favorite||=b.favorite;a.trashed&&=b.trashed;
+      const fs=[...new Set([...(a.also||[]),...fsOf(b)])].filter(f=>f!==a.folder);if(fs.length)a.also=fs;
+      if(!a.status&&b.status)putStatus([a],b.status);
+      if(!a.source&&b.source){a.source=b.source;if(dbxMode&&own&&a.kind!=="url")(own.sources||={})[a.id]={url:b.source,updatedAt:t}}}
+    items=items.filter(i=>!del.has(i.id));save();if(dbxMode){saveCache();await flushSave()}render();
+    toast(del.size<n?L("{n} 件を削除しました（{m} 件は削除できませんでした）",{n:del.size,m:n-del.size}):L("{n} 件を削除しました",{n:del.size}))})};
 $("bRestore").onclick=()=>{const s=selItems();s.forEach(i=>i.trashed=false);st.sel.clear();save();render();toast(L("{n} 件を元に戻しました",{n:s.length}))};
 $("bTag").onclick=()=>{const s=selItems();const cur=[...new Set(s.flatMap(i=>i.tags))].sort((a,b)=>a.localeCompare(b,"ja"));
   formDlg(L("タグ"),`<input id="fTag" list="tagList" placeholder="${L("タグ名")}"><datalist id="tagList">${TAGS.map(t=>`<option value="${esc(t)}">`).join("")}</datalist><div class="tags" id="fCur"></div>`,L("追加"),()=>{const t=$("fTag").value.trim();if(!t)return;s.forEach(i=>{if(!i.tags.includes(t))i.tags.push(t)});save();render();toast(L("「{t}」を追加しました",{t}))},
