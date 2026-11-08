@@ -11,6 +11,11 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({ id: "save-image", title: "Tehonに保存", contexts: ["image"] });
 });
 
+// The popup asks for access to all sites right after handing over a save. On some systems the
+// permission prompt closes the popup before it can say "go", so a save also starts when access is
+// granted, or after a while.
+chrome.permissions.onAdded.addListener(() => release());
+
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== "save-image" || !info.srcUrl) return;
   const { last = { folder: "", tags: [] } } = await chrome.storage.local.get("last");
@@ -41,7 +46,10 @@ async function handle(m) {
       return { folders: await refreshFolders() };
     case "save":
       await remember(m);
-      enqueue(m);
+      enqueue(m, true);
+      return {};
+    case "go":
+      release();
       return {};
     case "saveUrl": {
       await remember(m);
@@ -69,8 +77,16 @@ async function refreshFolders() {
 }
 
 /* ---------- save queue ---------- */
-let job = null; // { total, done, failed }
+let job = null; // { total, done, failed, error? }
 const queue = [];
+let held = null; // timer while a popup save waits for the permission prompt
+
+function release() {
+  if (!held) return;
+  clearTimeout(held);
+  held = null;
+  if (!running) run();
+}
 
 async function publish() {
   await chrome.storage.session.set({ job });
@@ -81,13 +97,16 @@ async function publish() {
 
 // items: { url } for an image, { vid, url? } for a video (url when it can be downloaded as a file).
 // page: the tab's address, kept as the file's source.
-function enqueue({ tabId, page, items, folder, tags }) {
+function enqueue({ tabId, page, items, folder, tags }, hold = false) {
   if (!job || job.done + job.failed === job.total) job = { total: 0, done: 0, failed: 0 };
   job.total += items.length;
   if (!/^https?:/.test(page || "")) page = null;
   for (const it of items) queue.push({ tabId, page, ...it, folder, tags });
   publish();
-  if (!running) run();
+  if (hold) {
+    clearTimeout(held);
+    held = setTimeout(release, 20e3);
+  } else if (!held && !running) run();
 }
 
 let running = false;
@@ -109,8 +128,9 @@ async function run() {
         const meta = await dbx.upload(t.folder, name, blob);
         saved.push({ id: meta.id, tags: t.tags, page: t.page });
         job.done++;
-      } catch {
+      } catch (e) {
         job.failed++;
+        if (e instanceof dbx.DropboxError) job.error = e.status === 401 ? "auth" : e.status === 507 || /insufficient_space/.test(e.body) ? "space" : "dropbox";
       }
       if (t.vid) job.recording = false;
       await publish();
@@ -132,8 +152,9 @@ async function run() {
   } finally {
     clearInterval(alive);
     running = false;
-    if (queue.length) run();
-    else setTimeout(() => job && job.done + job.failed === job.total && !job.failed && ((job = null), publish()), 4000);
+    if (queue.length) return void run();
+    if (saved.length) chime();
+    setTimeout(() => job && job.done + job.failed === job.total && !job.failed && ((job = null), publish()), 4000);
   }
 }
 
@@ -195,4 +216,12 @@ function fileName(url, type) {
   const has = extOf(base);
   if (want && !(has === want || (want === "jpg" && has === "jpeg"))) base = (EXTS.has(has) ? base.slice(0, -has.length - 1) : base) + "." + want;
   return base;
+}
+
+/* ---------- sound when a save finishes ---------- */
+async function chime() {
+  try {
+    if (!(await chrome.offscreen.hasDocument())) await chrome.offscreen.createDocument({ url: "sound.html", reasons: ["AUDIO_PLAYBACK"], justification: "保存完了の通知音" });
+    await chrome.runtime.sendMessage({ type: "chime" });
+  } catch {}
 }

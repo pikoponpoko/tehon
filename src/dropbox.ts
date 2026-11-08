@@ -359,11 +359,12 @@ export async function writeText(path: string, text: string, rev: string): Promis
 }
 
 /** Adds a new file; never overwrites (autorename on name clash). Files over 150MB need upload sessions (not yet). */
-export async function upload(folder: string, file: File): Promise<FileMeta> {
+export async function upload(folder: string, file: File, overwrite = false): Promise<FileMeta> {
   const path = (folder ? "/" + folder : "") + "/" + file.name;
+  const mode = overwrite ? { mode: "overwrite" } : { mode: "add", autorename: true };
   const r = await call(CONTENT + "files/upload", {
     method: "POST",
-    headers: { "Content-Type": "application/octet-stream", "Dropbox-API-Arg": argHeader({ path, mode: "add", autorename: true, mute: true }) },
+    headers: { "Content-Type": "application/octet-stream", "Dropbox-API-Arg": argHeader({ path, ...mode, mute: true }) },
     body: file,
   });
   return r.json();
