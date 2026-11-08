@@ -235,7 +235,7 @@ $("save").onclick = async () => {
 $("saveUrl").onclick = async () => {
   $("saveUrl").disabled = true;
   const r = await send({ type: "saveUrl", url: page.url, title: page.title, folder: folderValue(), tags: splitTags($("tags").value) });
-  $("status").textContent = r.error ? (r.error === "auth" ? "Dropboxに再接続してください" : "URLを保存できませんでした") : "URLを保存しました";
+  $("status").textContent = r.error ? (r.error === "auth" ? "Dropboxに再接続してください" : "URLを保存できませんでした") : r.dup ? "保存済みのURLです" : "URLを保存しました";
   if (r.error) $("saveUrl").disabled = false;
 };
 
@@ -252,7 +252,11 @@ function showJob(job) {
         : job.error === "space"
           ? "Dropboxの容量が足りません"
           : `${job.failed}件保存できませんでした`
-      : `${job.done}件保存しました`;
+      : job.dup
+        ? job.dup === job.done
+          ? "すべて保存済みです"
+          : `${job.done - job.dup}件保存しました（${job.dup}件は保存済み）`
+        : `${job.done}件保存しました`;
 }
 
 chrome.storage.session.onChanged.addListener(c => c.job && showJob(c.job.newValue));

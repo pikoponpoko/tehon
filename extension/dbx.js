@@ -171,3 +171,43 @@ export function updateDevice(fn) {
   chain = run.catch(() => {});
   return run;
 }
+
+/* ---------- duplicates (same rule as the app: same Dropbox content hash, or URL with the same address) ---------- */
+// https://www.dropbox.com/developers/reference/content-hash : SHA-256 of each 4 MB block, then SHA-256 of those.
+export async function contentHash(blob) {
+  const B = 4 * 1024 * 1024, parts = [];
+  for (let i = 0; i < blob.size || i === 0; i += B) parts.push(new Uint8Array(await crypto.subtle.digest("SHA-256", await blob.slice(i, i + B).arrayBuffer())));
+  const all = new Uint8Array(parts.length * 32);
+  parts.forEach((p, i) => all.set(p, i * 32));
+  return [...new Uint8Array(await crypto.subtle.digest("SHA-256", all))].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Content hashes of every file in the library (Tehon's own /.tehon left out). */
+export async function libraryHashes() {
+  const out = new Set();
+  let r = await rpc("files/list_folder", { path: "", recursive: true, limit: 2000 });
+  for (;;) {
+    for (const e of r.entries) if (e[".tag"] === "file" && e.size && e.content_hash && !e.path_lower.startsWith(META_DIR + "/")) out.add(e.content_hash);
+    if (!r.has_more) break;
+    r = await rpc("files/list_folder/continue", { cursor: r.cursor });
+  }
+  return out;
+}
+
+async function readJson(path) {
+  const r = await call(CONTENT + "files/download", { method: "POST", headers: { "Dropbox-API-Arg": argHeader({ path }) } });
+  return JSON.parse(await r.text());
+}
+
+/** True when a saved URL (any device, or carried over from Eagle) has this exact address. */
+export async function hasUrl(url) {
+  let files = [];
+  try {
+    files = (await rpc("files/list_folder", { path: META_DIR + "/devices" })).entries;
+  } catch {}
+  const lists = await Promise.all([
+    ...files.filter(f => f[".tag"] === "file" && f.name.endsWith(".json")).map(f => readJson(f.id).then(d => Object.values(d.urls || {}).filter(u => !u.deleted), () => [])),
+    readJson(META_DIR + "/eagle-manifest.json").then(m => m.urls || [], () => []),
+  ]);
+  return lists.some(l => l.some(u => u.url === url));
+}

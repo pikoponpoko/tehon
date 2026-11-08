@@ -54,6 +54,7 @@ async function handle(m) {
       return {};
     case "saveUrl": {
       await remember(m);
+      if (await dbx.hasUrl(m.url)) return { dup: true };
       const t = Date.now();
       const key = t.toString(36) + Math.random().toString(36).slice(2, 6);
       await dbx.updateDevice(d => {
@@ -116,6 +117,8 @@ async function run() {
   // Extension API calls keep the service worker alive between uploads.
   const alive = setInterval(() => chrome.runtime.getPlatformInfo(), 20e3);
   const saved = [];
+  // Files already in the library (same content) are not saved again, nor twice in one batch.
+  const knownP = dbx.libraryHashes().catch(() => new Set());
   // Recordings play in real time, one at a time; images download four at a time beside them.
   const take = video => {
     const i = queue.findIndex(t => !!t.vid === video);
@@ -126,9 +129,16 @@ async function run() {
       try {
         if (t.vid) (job.recording = true), await publish();
         const { blob, name } = t.vid ? await getVideo(t) : await fetchImage(t.url, t.tabId).then(b => ({ blob: b, name: fileName(t.url, b.type) }));
-        const meta = await dbx.upload(t.folder, name, blob);
-        saved.push({ id: meta.id, tags: t.tags, page: t.page });
-        job.done++;
+        const [hash, known] = await Promise.all([dbx.contentHash(blob), knownP]);
+        if (known.has(hash)) {
+          job.dup = (job.dup || 0) + 1;
+          job.done++;
+        } else {
+          known.add(hash);
+          const meta = await dbx.upload(t.folder, name, blob);
+          saved.push({ id: meta.id, tags: t.tags, page: t.page });
+          job.done++;
+        }
       } catch (e) {
         job.failed++;
         if (e instanceof dbx.DropboxError) job.error = e.status === 401 ? "auth" : e.status === 507 || /insufficient_space/.test(e.body) ? "space" : "dropbox";
