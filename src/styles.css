@@ -220,3 +220,11 @@ select.btn{padding-right:8px}
 .vfoot .vst option{color:initial}
 .stpick button{border:1px solid var(--line);margin-bottom:4px}
 @media (max-width:760px){.seg button{padding:6px 5px}.kb{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px}.kboard{gap:8px}}
+/* duplicates: one row per group, the copies to be deleted dimmed */
+.grid.dups{display:flex;flex-direction:column;gap:10px}
+.grid.dups .dg{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--cell,170px),1fr));gap:10px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.grid.dups .dg:last-of-type{border-bottom:0}
+.grid.dups .card.dupx{opacity:.45}
+.grid.dups .card.dupx:hover,.grid.dups .card.dupx:focus-visible,.grid.dups .card.dupx.sel{opacity:1}
+.grid.dups .card .meta{padding-bottom:0}
+.grid.dups .card .fd{padding:0 8px 6px;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

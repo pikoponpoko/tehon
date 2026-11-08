@@ -39,6 +39,9 @@ const EN={
   "アップロード中 {i} / {n}":"Uploading {i} / {n}","読み込み中 {n} 件":"Loading {n}",
   "Dropboxに保存できませんでした":"Couldn't save to Dropbox","Dropboxに再接続してください":"Reconnect Dropbox","Dropboxを読み込めませんでした":"Couldn't load Dropbox",
   "Dropboxに接続できませんでした":"Couldn't connect to Dropbox",
+  "重複":"Duplicates","重複はありません":"No duplicates","{n} 件を削除":"Delete {n|item}","{n} 件の重複を削除":"Delete {n|duplicate}","削除中":"Deleting","削除できませんでした":"Couldn't delete",
+  "同じ内容のものを1つ残して削除します。残すほうに元のフォルダ（リンク）とタグをまとめます。Dropboxでは「削除済みファイル」から一定期間復元できます。":"Keeps one of each and deletes the rest. The one kept gets their folders (as links) and tags. Dropbox keeps deleted files in \"Deleted files\" for a limited time.",
+  "{n} 件を削除しました":"Deleted {n|item}","{n} 件を削除しました（{m} 件は削除できませんでした）":"Deleted {n|item} ({m} couldn't be deleted)",
   // status (kanban)
   "ステータス":"Status","カンバン":"Kanban","未指定":"No status","作業中":"In progress","発表済み":"Published",
   "ステータスを追加":"Add status","ステータスを編集":"Edit status","ステータス名":"Status name",
