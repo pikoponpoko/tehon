@@ -910,7 +910,10 @@ let tt;function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clear
 /* viewer */
 const V={i:0,z:1,x:0,y:0,fit:1,raf:0,play:true,img:null,video:null};
 const vc=$("vc"),vx=vc.getContext("2d");
-function openViewer(i){V.i=i;$("viewer").hidden=false;loadV()}
+// The open viewer is a history entry, so the system back gesture (Android, iOS Safari) returns to the list.
+let vPop=false;if(history.state?.viewer)history.replaceState({...history.state,viewer:0},"");
+function openViewer(i){V.i=i;$("viewer").hidden=false;if(!history.state?.viewer)history.pushState({...history.state,viewer:1},"");loadV()}
+addEventListener("popstate",()=>{if(vPop){vPop=false;return}if(!$("viewer").hidden)closeViewer()});
 const vi=$("vi");let vv=$("vv");
 const vt=$("vt"),vh=$("vh");let v3=$("v3"),vtTimer;
 // vt (text), v3 (3D) and vh (spreadsheet) handle their own pointer input and aren't zoomed.
@@ -959,7 +962,7 @@ async function openFmt(it,ph){
   }catch(e){if(live()){$("vState").textContent="";toast(L("プレビューできない形式です"))}}
 }
 $("vPgUp").onclick=()=>V.doc&&showPage(V.doc.p-1);$("vPgDn").onclick=()=>V.doc&&showPage(V.doc.p+1);
-function closeViewer(){settle(true);if(liveDue)liveReload();endFmt();V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");vf.removeAttribute("src");$("viewer").style.opacity="";$("viewer").style.transition="";listBack()}
+function closeViewer(){settle(true);if(liveDue)liveReload();endFmt();V.enter=null;$("viewer").hidden=true;cancelAnimationFrame(V.raf);vv.pause();vv.removeAttribute("src");vi.removeAttribute("src");vf.removeAttribute("src");$("viewer").style.opacity="";$("viewer").style.transition="";$("viewer").style.transform="";listBack();if(history.state?.viewer){vPop=true;history.back()}}
 // Back to the list where it was: the scroll position stays, and only moves if the last shown item is out of view.
 function listBack(){const w=$("wrap"),g=$("grid"),top=w.scrollTop;renderGrid();const c=cardAt(V.i);
   while(w.scrollHeight<top+w.clientHeight&&g.querySelector(".more"))appendCards(g.querySelectorAll(".card").length);
@@ -1097,6 +1100,17 @@ const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(!sw||pts.size)r
   const d=V.x<-stage.clientWidth*.15||(s.v<-.3&&V.x<-15)?1:V.x>stage.clientWidth*.15||(s.v>.3&&V.x>15)?-1:0;
   if(d&&list[V.i+d])go(d,true);else if(V.x)glide(0,200)};
 stage.addEventListener("pointerup",up);stage.addEventListener("pointercancel",up);
+// Edge swipe (touch/pen): a swipe from the left edge slides the viewer off to the right and back to the list; release past 30% of the width or with a flick.
+const vEdge=$("vEdge");let eg=null;
+const edgeAt=dx=>{const vw=$("viewer");vw.style.transform=dx?`translateX(${dx}px)`:"";vw.style.opacity=dx?String(1-Math.min(.6,dx/innerWidth*.8)):""};
+vEdge.addEventListener("pointerdown",e=>{if(e.pointerType==="mouse"||eg)return;e.stopPropagation();vEdge.setPointerCapture(e.pointerId);settle();eg={id:e.pointerId,x:e.clientX,y:e.clientY,t:performance.now(),v:0,dx:0,ax:null}});
+vEdge.addEventListener("pointermove",e=>{if(!eg||e.pointerId!==eg.id)return;const tx=e.clientX-eg.x,ty=e.clientY-eg.y;
+  if(!eg.ax){if(Math.hypot(tx,ty)<8)return;eg.ax=tx>Math.abs(ty)?"x":"n"}if(eg.ax!=="x")return;
+  const dx=Math.max(0,tx),n=performance.now();eg.v=(dx-eg.dx)/Math.max(1,n-eg.t);eg.t=n;eg.dx=dx;edgeAt(dx)});
+const edgeUp=e=>{if(!eg||e.pointerId!==eg.id)return;const g=eg,vw=$("viewer");eg=null;if(g.ax!=="x")return;
+  if(e.type!=="pointercancel"&&(g.dx>innerWidth*.3||(g.v>.4&&g.dx>20))){vw.style.transition="transform 160ms ease-out,opacity 160ms";edgeAt(innerWidth);setTimeout(closeViewer,160)}
+  else{vw.style.transition="transform 200ms,opacity 200ms";edgeAt(0);setTimeout(()=>vw.style.transition="",200)}};
+vEdge.addEventListener("pointerup",edgeUp);vEdge.addEventListener("pointercancel",edgeUp);
 // Lifting the fingers after a pinch isn't a double tap, so the zoom stays.
 let lastTap=0;stage.addEventListener("pointerup",e=>{if(selfInput(e.target))return;const n=Date.now();if(swiped){swiped=false;lastTap=0;return}if(multi){if(!pts.size)multi=false;lastTap=0;return}
   if(V.audio&&e.target===vc&&V.audio.duration){const r=vc.getBoundingClientRect();V.audio.currentTime=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*V.audio.duration;lastTap=0;return}if(n-lastTap<300){const [x,y]=rel(e);Math.abs(V.z-V.fit)<.001?zoomAt(2.5/V.z*V.fit>1?2.5:1/V.z,x,y):fitV()}lastTap=n});
