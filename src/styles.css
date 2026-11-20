@@ -125,6 +125,8 @@ select.btn{padding-right:8px}
 .stage{overflow:hidden;position:relative;touch-action:none;cursor:grab}
 .stage canvas,.stage img,.stage video,.stage iframe{max-width:none;max-height:none;position:absolute;left:50%;top:50%;transform-origin:0 0;image-rendering:auto}
 .stage iframe{border:0}
+.vedge{position:absolute;left:0;top:0;bottom:0;width:calc(20px + env(safe-area-inset-left,0px));z-index:3;touch-action:none;display:none}
+@media (hover:none){.vedge{display:block}}
 .stage #v3{left:0;top:0;width:100%;height:100%;transform:none}
 .stage #vh{left:auto;top:auto;transform:none;inset:12px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));width:calc(100% - 32px);height:calc(100% - 24px);border:1px solid var(--vline);border-radius:8px;background:var(--vpanel)}
 .vpage{display:inline-flex;gap:6px;align-items:center;font-family:var(--mono);font-size:12px}
