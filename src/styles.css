@@ -175,7 +175,8 @@ select.btn{padding-right:8px}
   .bar .menu{display:inline-flex}
   .vbar{flex-wrap:wrap}
   .vbar .t{order:-1;flex-basis:calc(100% - 50px)}
-  .vbtn{padding:6px 9px}
+  .vbar{gap:6px}
+  .vbtn{padding:6px 8px}
   .size{display:none}
   .bar{flex-wrap:nowrap;gap:6px;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
   .bar>*{flex-shrink:0}

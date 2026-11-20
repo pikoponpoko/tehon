@@ -969,7 +969,7 @@ function listBack(){const w=$("wrap"),g=$("grid"),top=w.scrollTop;renderGrid();c
   w.scrollTop=top;if(!c)return;c.focus({preventScroll:true});const r=c.getBoundingClientRect(),b=w.getBoundingClientRect();if(r.bottom<b.top||r.top>b.bottom)c.scrollIntoView({block:"nearest"})}
 function loadV(){
   settle(true);cancelAnimationFrame(V.raf);vv.pause();endFmt();V.video=null;delete vi.dataset.ph;
-  const it=list[V.i];$("vTitle").textContent=it.name;$("vFav").classList.toggle("on",it.favorite);
+  const it=list[V.i];$("vTitle").textContent=it.name;{const d=$("vDel"),l=it.trashed?L("ゴミ箱から削除"):L("ゴミ箱へ");d.title=l;d.setAttribute("aria-label",l)}$("vFav").classList.toggle("on",it.favorite);
   const anim=it.kind==="gif"||it.kind==="video";$("vPlay").hidden=!anim||((it.local||it.dbx)&&it.kind==="gif");V.play=true;$("vPlay").textContent="❚❚";
   renderFoot(it);$("vState").textContent="";$("vReload").hidden=true;
   if(it.conflict){it.conflict=false;it.text=null;it.textP=null}
@@ -1123,8 +1123,13 @@ vt.addEventListener("wheel",e=>{if(e.ctrlKey||e.metaKey||pref("wheel")==="zoom")
 let vtSw=null;vt.addEventListener("touchstart",e=>{vtSw=e.touches.length===1?{x:e.touches[0].clientX,y:e.touches[0].clientY,t:performance.now()}:null},{passive:true});
 vt.addEventListener("touchend",e=>{const s=vtSw;vtSw=null;if(!s||e.touches.length)return;const t=e.changedTouches[0],dx=t.clientX-s.x,dy=t.clientY-s.y;
   if(Math.abs(dx)>Math.max(50,Math.abs(dy)*1.5)&&performance.now()-s.t<800&&vt.selectionEnd===vt.selectionStart){vt.blur();go(dx<0?1:-1)}},{passive:true});
-function vTrash(){const it=list[V.i];if(!it||it.trashed)return;it.trashed=true;save();renderSide();list.splice(V.i,1);toast(L("ゴミ箱へ移動しました"));if(!list.length)return closeViewer();V.i=Math.min(V.i,list.length-1);loadV()}
-document.addEventListener("keydown",e=>{if($("viewer").hidden||e.target.id==="vTagInput")return;if(e.altKey||((e.metaKey||e.ctrlKey)&&e.target!==vt))return;if(e.target===vt){if(e.key==="Escape")vt.blur();const c=vt.selectionStart;if(!e.shiftKey&&!e.metaKey&&!e.ctrlKey&&c===vt.selectionEnd&&(e.key==="ArrowLeft"&&c===0||e.key==="ArrowRight"&&c===vt.value.length)){e.preventDefault();vt.blur();go(e.key==="ArrowRight"?1:-1);return}if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();vt.oninput()}return}
+// Delete in the viewer works like the list's: to the trash, or from the trash after a confirm. Then the next item opens.
+function vTrash(){const it=list[V.i];if(!it)return;
+  const drop=()=>{list.splice(V.i,1);if(!list.length)return closeViewer();V.i=Math.min(V.i,list.length-1);loadV()};
+  if(it.trashed){if(st.view!=="trash")return;confirmDlg(L("{n} 件をゴミ箱から削除",{n:1}),L("Dropboxでは「削除済みファイル」から一定期間復元できます。"),()=>{items=items.filter(i=>i!==it);st.sel.delete(it.id);save();renderSide();toast(L("削除しました"));drop()});return}
+  it.trashed=true;st.sel.delete(it.id);save();renderSide();toast(L("ゴミ箱へ移動しました"));drop()}
+$("vDel").onclick=vTrash;
+document.addEventListener("keydown",e=>{if($("viewer").hidden||!$("dlg").hidden||e.target.id==="vTagInput")return;if(e.altKey||((e.metaKey||e.ctrlKey)&&e.target!==vt))return;if(e.target===vt){if(e.key==="Escape")vt.blur();const c=vt.selectionStart;if(!e.shiftKey&&!e.metaKey&&!e.ctrlKey&&c===vt.selectionEnd&&(e.key==="ArrowLeft"&&c===0||e.key==="ArrowRight"&&c===vt.value.length)){e.preventDefault();vt.blur();go(e.key==="ArrowRight"?1:-1);return}if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();vt.oninput()}return}
   ({Escape:closeViewer,ArrowLeft:()=>$("vPrev").click(),ArrowRight:()=>$("vNext").click(),"+":()=>zoomAt(1.25),"=":()=>zoomAt(1.25),"-":()=>zoomAt(.8),"0":fitV,"1":()=>{if(V.el&&V.el!==vf){V.z=1;V.x=0;V.y=0;applyV()}},ArrowUp:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p-1)}},ArrowDown:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p+1)}},PageUp:()=>V.doc&&showPage(V.doc.p-1),PageDown:()=>V.doc&&showPage(V.doc.p+1),Delete:vTrash,Backspace:vTrash,f:()=>$("vFav").click()," ":()=>$("vPlay").click(),t:()=>{e.preventDefault();$("vTagInput").focus()}}[e.key]||(()=>{}))()});
 addEventListener("resize",()=>{if(!$("viewer").hidden)fitV()});
 
