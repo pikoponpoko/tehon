@@ -1127,8 +1127,14 @@ const edgeUp=e=>{if(!eg||e.pointerId!==eg.id)return;const g=eg,vw=$("viewer");eg
   else{vw.style.transition="transform 200ms,opacity 200ms";edgeAt(0);setTimeout(()=>vw.style.transition="",200)}};
 vEdge.addEventListener("pointerup",edgeUp);vEdge.addEventListener("pointercancel",edgeUp);
 // Lifting the fingers after a pinch isn't a double tap, so the zoom stays.
-let lastTap=0;stage.addEventListener("pointerup",e=>{if(selfInput(e.target))return;const n=Date.now();if(swiped){swiped=false;lastTap=0;return}if(multi){if(!pts.size)multi=false;lastTap=0;return}
-  if(V.audio&&e.target===vc&&V.audio.duration){const r=vc.getBoundingClientRect();V.audio.currentTime=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*V.audio.duration;lastTap=0;return}if(n-lastTap<300){const [x,y]=rel(e);Math.abs(V.z-V.fit)<.001?zoomAt(2.5/V.z*V.fit>1?2.5:1/V.z,x,y):fitV()}lastTap=n});
+// A single tap or click on the empty stage (not on the item) goes back to the list, once no second tap follows.
+// Pointer capture retargets pointerup to the stage, so the target is taken at pointerdown.
+let lastTap=0,tapDown=null,bgT=0;stage.addEventListener("pointerdown",e=>{clearTimeout(bgT);tapDown={t:e.target,x:e.clientX,y:e.clientY,at:Date.now()}});
+stage.addEventListener("pointerup",e=>{const d=tapDown;tapDown=null;if(selfInput(e.target))return;const n=Date.now();if(swiped){swiped=false;lastTap=0;return}if(multi){if(!pts.size)multi=false;lastTap=0;return}
+  if(V.audio&&d?.t===vc&&V.audio.duration){const r=vc.getBoundingClientRect();V.audio.currentTime=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*V.audio.duration;lastTap=0;return}
+  const tap=d&&Math.hypot(e.clientX-d.x,e.clientY-d.y)<8&&n-d.at<500;if(!tap){lastTap=0;return}
+  if(n-lastTap<300){const [x,y]=rel(e);Math.abs(V.z-V.fit)<.001?zoomAt(2.5/V.z*V.fit>1?2.5:1/V.z,x,y):fitV();lastTap=0;return}lastTap=n;
+  if(d.t===stage&&e.button===0){const it=list[V.i];bgT=setTimeout(()=>{if(!$("viewer").hidden&&list[V.i]===it&&!pts.size)closeViewer()},300)}});
 // Text: the wheel pages like other items unless it scrolls the text; a sideways trackpad swipe or a sideways finger swipe always pages.
 vt.addEventListener("wheel",e=>{if(e.ctrlKey||e.metaKey||pref("wheel")==="zoom")return;const side=Math.abs(e.deltaX)>Math.abs(e.deltaY);
   if(!side&&vt.scrollHeight>vt.clientHeight+1)return;e.preventDefault();const d=side?e.deltaX:e.deltaY,px=e.deltaMode?d*40:d,n=performance.now();
