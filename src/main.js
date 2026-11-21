@@ -565,18 +565,22 @@ function renderSel(){
   $("selBtn").textContent=st.selecting?L("完了"):L("選択");
 }
 function render(){renderSide();renderGrid();renderSel()}
+// Selection changes only repaint the cards already on screen, so the list keeps its scroll position.
+function paintSel(){const g=$("grid");g.classList.toggle("selecting",st.selecting||st.sel.size>0);
+  g.querySelectorAll(".card").forEach(c=>c.classList.toggle("sel",st.sel.has(list[+c.dataset.i]?.id)));renderSel()}
 
 /* grid events */
 $("grid").addEventListener("click",e=>{
   const c=e.target.closest(".card");if(!c)return;const it=list[+c.dataset.i];
-  if(e.target.closest(".fv")){it.favorite=!it.favorite;save();if(st.view==="fav")render();else{e.target.closest(".fv").classList.toggle("on",it.favorite);renderSide()}return}
-  if(e.shiftKey&&st.anchor!=null){const a=Math.min(st.anchor,+c.dataset.i),b=Math.max(st.anchor,+c.dataset.i);for(let i=a;i<=b;i++)st.sel.add(list[i].id);renderGrid();renderSel();return}
-  if(e.metaKey||e.ctrlKey||st.selecting||st.sel.size||e.target.closest(".chk")){st.sel.has(it.id)?st.sel.delete(it.id):st.sel.add(it.id);st.anchor=+c.dataset.i;renderGrid();renderSel();return}
+  const selMode=st.selecting||st.sel.size>0;
+  if(e.target.closest(".fv")&&!selMode){it.favorite=!it.favorite;save();if(st.view==="fav")render();else{e.target.closest(".fv").classList.toggle("on",it.favorite);renderSide()}return}
+  if(e.shiftKey&&st.anchor!=null){const a=Math.min(st.anchor,+c.dataset.i),b=Math.max(st.anchor,+c.dataset.i);for(let i=a;i<=b;i++)st.sel.add(list[i].id);paintSel();return}
+  if(e.metaKey||e.ctrlKey||selMode||e.target.closest(".chk")){st.sel.has(it.id)?st.sel.delete(it.id):st.sel.add(it.id);st.anchor=+c.dataset.i;paintSel();return}
   st.anchor=+c.dataset.i;openViewer(+c.dataset.i);
 });
 let hov;$("grid").addEventListener("pointerover",e=>{const c=e.target.closest(".card");clearTimeout(hov);if(c&&e.pointerType==="mouse")hov=setTimeout(()=>prefetch(list[+c.dataset.i]),120)});
 // pinching / pinchEnd: a pinch on the list must not turn into a long-press or a tap.
-let lp,lp0,pinching=false,pinchEnd=0;$("grid").addEventListener("pointerdown",e=>{const c=e.target.closest(".card");if(!c||e.pointerType==="mouse"||e.target.closest(".fv"))return;clearTimeout(lp);if(pinching||!e.isPrimary)return;lp0=[e.clientX,e.clientY];lp=setTimeout(()=>{if(pinching)return;st.selecting=true;st.sel.add(list[+c.dataset.i].id);renderGrid();renderSel();lp="done"},450)});
+let lp,lp0,pinching=false,pinchEnd=0;$("grid").addEventListener("pointerdown",e=>{const c=e.target.closest(".card");if(!c||e.pointerType==="mouse"||e.target.closest(".fv"))return;clearTimeout(lp);if(pinching||!e.isPrimary)return;lp0=[e.clientX,e.clientY];lp=setTimeout(()=>{if(pinching)return;st.selecting=true;st.sel.add(list[+c.dataset.i].id);paintSel();lp="done"},450)});
 ["pointerup","pointercancel","pointermove"].forEach(ev=>$("grid").addEventListener(ev,e=>{if(ev==="pointermove"&&lp0&&Math.hypot(e.clientX-lp0[0],e.clientY-lp0[1])<8)return;if(lp!=="done")clearTimeout(lp)}));
 $("grid").addEventListener("click",e=>{if(lp==="done"||pinching||Date.now()-pinchEnd<500){lp=null;e.stopImmediatePropagation()}},true);
 /* keyboard */
@@ -592,7 +596,7 @@ function vertical(i,dir){const c=cardAt(i);if(!c)return i;const r=c.getBoundingC
 // Acts on the selection, or on the focused card when nothing is selected.
 function useFocus(){if(st.sel.size)return true;const i=curIdx();if(i==null)return false;st.sel.add(list[i].id);st.anchor=i;st.imp=true;return true}
 function dropImp(){if(!st.imp)return;st.imp=false;st.sel.clear();renderGrid();renderSel();if(st.anchor!=null)focusCard(st.anchor)}
-function rangeTo(i){if(st.anchor==null)st.anchor=curIdx()??i;st.sel.clear();const a=Math.min(st.anchor,i),b=Math.max(st.anchor,i);for(let k=a;k<=b;k++)st.sel.add(list[k].id);renderGrid();renderSel();focusCard(i)}
+function rangeTo(i){if(st.anchor==null)st.anchor=curIdx()??i;st.sel.clear();const a=Math.min(st.anchor,i),b=Math.max(st.anchor,i);for(let k=a;k<=b;k++)st.sel.add(list[k].id);paintSel();focusCard(i)}
 function keysDlg(){const m=MAC?"⌘":"Ctrl";
   const K=[[L("一覧"),[["← → ↑ ↓",L("移動")],["Shift + ← → ↑ ↓",L("範囲選択")],["Home / End",L("先頭 / 末尾")],["Enter",L("開く")],["Space",L("選択")],[m+" + A",L("すべて選択")],["Esc",L("選択解除")],["F",L("お気に入り")],["T",L("タグを追加")],["M",L("移動")],["Delete",L("ゴミ箱へ")],["/ , "+m+" + F",L("検索")],["N",L("追加")],["+ / -",L("列数")],["1〜9 / 0",L("列数を指定 / 自動")],["S",L("サイドバー")],["G",L("グリッド / ウォーターフォール")],["K",L("カンバン")]]],
     [L("ビューア"),[["← →",L("前 / 次")],["+ / - / 0",L("拡大 / 縮小 / 全体")],[m+" + "+L("ホイール"),L("拡大 / 縮小")],["1","100%"],["↑ ↓",L("前 / 次のページ")],["Space",L("再生 / 停止")],["F",L("お気に入り")],["T",L("タグ")],["Delete",L("ゴミ箱へ")],["Esc",L("閉じる")]]]];
@@ -602,7 +606,7 @@ document.addEventListener("keydown",e=>{
   if(typing(e.target)){if(e.target.id==="q"&&e.key==="Escape"){e.target.blur();focusCard(0)}return}
   const mod=e.metaKey||e.ctrlKey,k=e.key.length===1?e.key.toLowerCase():e.key,i=curIdx(),tr=st.view==="trash";
   if(mod){
-    if(k==="a"){e.preventDefault();list.forEach(x=>st.sel.add(x.id));renderGrid();renderSel();if(i!=null)focusCard(i)}
+    if(k==="a"){e.preventDefault();list.forEach(x=>st.sel.add(x.id));paintSel();if(i!=null)focusCard(i)}
     if(k==="f"){e.preventDefault();$("q").focus();$("q").select()}
     return}
   const mv={ArrowRight:1,ArrowLeft:-1}[k];
@@ -610,7 +614,7 @@ document.addEventListener("keydown",e=>{
     const to=i==null?0:mv?i+mv:vertical(i,k==="ArrowDown"?1:-1);
     if(e.shiftKey)rangeTo(Math.max(0,Math.min(list.length-1,to)));else{const n=focusCard(to);if(n!=null)st.anchor=n}return}
   if(k==="Home"||k==="End"){e.preventDefault();const to=k==="Home"?0:list.length-1;e.shiftKey?rangeTo(to):focusCard(to);return}
-  if(k==="Escape"){st.sel.clear();st.selecting=false;renderGrid();renderSel();if(i!=null)focusCard(i);return}
+  if(k==="Escape"){st.sel.clear();st.selecting=false;paintSel();if(i!=null)focusCard(i);return}
   if(k==="/"){e.preventDefault();$("q").focus();return}
   if(k==="?"){keysDlg();return}
   if(k==="n"){$("addBtn").click();return}
@@ -620,7 +624,7 @@ document.addEventListener("keydown",e=>{
   if(k==="+"||k==="="||k==="-"){setCols(curCols()+(k==="-"?-1:1));return}
   if(/^[0-9]$/.test(k)){setCols(+k||null);return}
   if(k==="Enter"&&i!=null){e.preventDefault();openViewer(i);return}
-  if(k===" "&&i!=null){e.preventDefault();const id=list[i].id;st.sel.has(id)?st.sel.delete(id):st.sel.add(id);st.anchor=i;renderGrid();renderSel();focusCard(i);return}
+  if(k===" "&&i!=null){e.preventDefault();const id=list[i].id;st.sel.has(id)?st.sel.delete(id):st.sel.add(id);st.anchor=i;paintSel();focusCard(i);return}
   if(k==="Delete"||k==="Backspace"){if(useFocus()){e.preventDefault();trashSel();if(!tr){st.imp=false;if(i!=null)focusCard(i)}}return}
   if(tr)return;
   if(k==="f"&&!st.sel.size&&i!=null){const it=list[i];it.favorite=!it.favorite;save();if(st.view==="fav"){render();focusCard(i)}else{cardAt(i)?.querySelector(".fv")?.classList.toggle("on",it.favorite);renderSide()}return}
@@ -656,9 +660,9 @@ addEventListener("resize",()=>{if(!$("grid").classList.contains("cols"))$("size"
   wrap.addEventListener("gesturestart",e=>{e.preventDefault();clearTimeout(lp);base=curCols()});
   wrap.addEventListener("gestureend",()=>{pinchEnd=Date.now()});
   wrap.addEventListener("gesturechange",e=>{e.preventDefault();if(!d0)pinchCols(e.scale)});}
-$("selBtn").onclick=()=>{st.selecting=!st.selecting;if(!st.selecting)st.sel.clear();renderGrid();renderSel()};
-$("bAll").onclick=()=>{list.forEach(i=>st.sel.add(i.id));renderGrid();renderSel()};
-$("bNone").onclick=()=>{st.sel.clear();st.selecting=false;renderGrid();renderSel()};
+$("selBtn").onclick=()=>{st.selecting=!st.selecting;if(!st.selecting)st.sel.clear();paintSel()};
+$("bAll").onclick=()=>{list.forEach(i=>st.sel.add(i.id));paintSel()};
+$("bNone").onclick=()=>{st.sel.clear();st.selecting=false;paintSel()};
 const selItems=()=>items.filter(i=>st.sel.has(i.id));
 $("bFav").onclick=()=>{const s=selItems();const v=!s.every(i=>i.favorite);s.forEach(i=>i.favorite=v);save();render();toast(v?L("お気に入りに追加しました"):L("お気に入りを解除しました"))};
 function trashSel(){
