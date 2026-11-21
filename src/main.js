@@ -474,8 +474,19 @@ function editStatus(k){if(k===NONE)return;const x=STATUSES.find(s=>s.id===k);if(
     const n=$("fSt").value.trim();if(!n||n===stName(k))return;x.name=n;putStatuses();render()},
   ()=>{$("fSt").value=stName(k);$("fDel").onclick=()=>{const n=items.filter(i=>stOf(i)===k).length;
     confirmDlg(L("「{t}」を削除",{t:stName(k)}),L("{n} 件は未指定になります。",{n}),()=>{STATUSES=STATUSES.filter(s=>s!==x);if(st.status===k)st.status=null;putStatuses();render();toast(L("「{t}」を削除しました",{t:x.name}))})}})}
+// Re-rendering the same view (after a delete, move, tag or status change, a sync…) keeps the scroll position;
+// changing the view, folder, filter or sort starts from the top.
+let gridKey;
 function renderGrid(){
   list=filtered();
+  const w=$("wrap"),key=JSON.stringify([st.view,st.folder,st.lib,st.tag,st.q,st.sort,st.type,st.status,st.layout,st.rseed]),top=key===gridKey?w.scrollTop:0;gridKey=key;
+  renderGridNow();
+  if(!top)return;const g=$("grid");
+  // Cards come in chunks: add chunks until the old position exists again.
+  for(let k=0;k<50&&g.querySelector(".more")&&w.scrollHeight<top+w.clientHeight*2;k++)appendCards(+g.querySelectorAll(".card").length);
+  w.scrollTop=top;
+}
+function renderGridNow(){
   const g=$("grid");liveIO?.disconnect();lazyEls=[];g.querySelectorAll("video").forEach(v=>{v.pause();v.removeAttribute("src");v.load()});g.replaceChildren();
   g.classList.toggle("selecting",st.selecting||st.sel.size>0);
   const dv=st.view==="dup";g.classList.toggle("dups",dv);g.classList.toggle("fall",!dv&&st.layout==="fall");g.classList.toggle("kanban",!dv&&st.layout==="kanban");
