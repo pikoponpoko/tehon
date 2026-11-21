@@ -96,6 +96,7 @@ select.btn{padding-right:8px}
 .stage textarea{position:absolute;inset:12px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));margin:0 auto;max-width:860px;width:auto;resize:none;border:1px solid var(--vline);border-radius:8px;background:var(--vpanel);color:var(--vfg);font:15px/1.8 var(--sans);padding:20px 24px;outline:none;cursor:text}
 .stage textarea:focus{border-color:var(--accent)}
 .vstate{font-size:12px;opacity:.7;white-space:nowrap}
+.vstate:empty{display:none}
 .card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:pointer;user-select:none;-webkit-user-select:none}
 .card .th{aspect-ratio:1;background:var(--bg);display:block;width:100%;max-width:100%;object-fit:cover}
 .card.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
@@ -122,6 +123,10 @@ select.btn{padding-right:8px}
 .vbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;padding:6px 10px;border-radius:6px;border:1px solid var(--vline);font-size:13px;font-family:var(--mono)}
 .vbtn:hover{background:color-mix(in srgb,var(--vfg) 10%,transparent)}
 .vbtn.on{color:var(--fav);border-color:var(--fav)}
+#vPlay{justify-content:center;min-width:2ch}
+#vFav{margin-left:auto}
+#vFav .hi,.fv .hi{fill:none;stroke:currentColor;stroke-width:2;overflow:visible}
+#vFav.on .hi,.fv.on .hi{fill:currentColor}
 .stage{overflow:hidden;position:relative;touch-action:none;cursor:grab}
 .stage canvas,.stage img,.stage video,.stage iframe{max-width:none;max-height:none;position:absolute;left:50%;top:50%;transform-origin:0 0;image-rendering:auto}
 .stage iframe{border:0}
@@ -175,6 +180,7 @@ select.btn{padding-right:8px}
   .bar .menu{display:inline-flex}
   .vbar{flex-wrap:wrap}
   .vbar .t{order:-1;flex-basis:calc(100% - 50px)}
+  #vClose{margin-left:auto}
   .vbar{gap:6px}
   .vbtn{padding:6px 8px}
   .size{display:none}
