@@ -51,17 +51,18 @@
     </div>
     <button class="btn ic fold" id="barOpen" aria-label="ツールバーを開く" title="ツールバーを開く"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6l4.5 4.5 4.5-4.5"/></svg></button>
     <div class="selbar" id="selbar" hidden>
-      <span><b id="selN">0</b> 件選択</span>
-      <button class="btn" id="bFav"><svg class="hi" viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> お気に入り</button>
-      <button class="btn" id="bTag">タグを追加</button>
-      <button class="btn" id="bStatus">ステータス</button>
-      <button class="btn" id="bMove">移動</button>
-      <button class="btn" id="bLink">リンク</button>
-      <button class="btn" id="bUnlink" hidden>リンクを外す</button>
-      <button class="btn" id="bTrash">ゴミ箱へ</button>
-      <button class="btn" id="bRestore" hidden>元に戻す</button>
-      <button class="btn" id="bAll">すべて選択</button>
-      <button class="btn" id="bNone">解除</button>
+      <span class="seln"><b id="selN">0</b> 件選択</span>
+      <button class="btn ic" id="bFav" aria-label="お気に入り" title="お気に入り"><svg class="hi" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.5l-1.2-1.1C6 15.1 3 12.4 3 9.1 3 6.4 5.1 4.5 7.6 4.5c1.6 0 3.2.8 4.4 2.1 1.2-1.3 2.8-2.1 4.4-2.1 2.5 0 4.6 1.9 4.6 4.6 0 3.3-3 6-7.8 10.3z"/></svg></button>
+      <button class="btn ic" id="bTag" aria-label="タグを追加" title="タグを追加"><svg class="hi" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12.2V4a1 1 0 0 1 1-1h8.2a1 1 0 0 1 .7.3l8 8a1 1 0 0 1 0 1.4l-8.2 8.2a1 1 0 0 1-1.4 0l-8-8a1 1 0 0 1-.3-.7z"/><circle cx="7.5" cy="7.5" r="1.2" fill="currentColor"/></svg></button>
+      <button class="btn ic" id="bStatus" aria-label="ステータス" title="ステータス"><svg class="hi" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="4" height="15" rx="1"/></svg></button>
+      <button class="btn ic" id="bMove" aria-label="移動" title="移動"><svg class="hi" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 13.5h6M12.5 11l2.5 2.5-2.5 2.5"/></svg></button>
+      <button class="btn ic" id="bLink" aria-label="リンク" title="リンク"><svg class="hi" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3A4 4 0 0 0 13 5.3l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 18.7l1-1"/></svg></button>
+      <button class="btn ic" id="bUnlink" aria-label="リンクを外す" title="リンクを外す" hidden><svg class="hi" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3A4 4 0 0 0 13 5.3l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 18.7l1-1"/><path d="M3 3l18 18"/></svg></button>
+      <button class="btn ic" id="bRestore" aria-label="元に戻す" title="元に戻す" hidden><svg class="hi" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.6"/><path d="M4 3.5v5.1h5.1"/></svg></button>
+      <button class="btn ic del" id="bTrash" aria-label="ゴミ箱へ" title="ゴミ箱へ"><svg class="hi" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3"/></svg></button>
+      <span class="selsp"></span>
+      <button class="btn ic" id="bAll" aria-label="すべて選択" title="すべて選択"><svg class="hi" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7.5 12l3 3 6-6"/></svg></button>
+      <button class="btn ic" id="bNone" aria-label="解除" title="解除"><svg class="hi" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
     <div class="selbar" id="dupbar" hidden><button class="btn pri" id="bDup"></button></div>
     <div class="grid-wrap sb" id="wrap"><div class="grid fall" id="grid"></div></div>
