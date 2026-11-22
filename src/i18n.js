@@ -30,7 +30,7 @@ const EN={
   "「{t}」を削除しました":"Deleted \"{t}\"","「{t}」を追加しました":"Added \"{t}\"",
   "お気に入りに追加しました":"Added to Favorites","お気に入りを解除しました":"Removed from Favorites",
   "{n} 件をゴミ箱から削除":"Delete {n|item} from Trash","Dropboxでは「削除済みファイル」から一定期間復元できます。":"Dropbox keeps them in \"Deleted files\" for a limited time.",
-  "削除しました":"Deleted","{n} 件をゴミ箱へ移動しました":"Moved {n|item} to Trash","{n} 件を元に戻しました":"Restored {n|item}",
+  "削除しました":"Deleted","取り消す":"Undo","削除日（新しい順）":"Date deleted (newest)","復元中":"Restoring","（{m} 件は復元できませんでした）":" ({m} couldn't be restored)","{n} 件をゴミ箱へ移動しました":"Moved {n|item} to Trash","{n} 件を元に戻しました":"Restored {n|item}",
   "{n} 件を {f} へ移動しました":"Moved {n|item} to {f}","{n} 件を {f} にリンクしました":"Linked {n|item} to {f}","{n} 件のリンクを外しました":"Removed {n|link}",
   "ファイル（画像・動画・テキスト）":"File (image, video, text)","Eagleライブラリ（.library フォルダ）":"Eagle library (.library folder)",
   "URLを入力してください":"Enter a URL","URLを追加しました":"URL added",
