@@ -96,7 +96,8 @@ select.btn{padding-right:8px}
 .stage textarea{position:absolute;inset:12px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));margin:0 auto;max-width:860px;width:auto;resize:none;border:1px solid var(--vline);border-radius:8px;background:var(--vpanel);color:var(--vfg);font:15px/1.8 var(--sans);padding:20px 24px;outline:none;cursor:text}
 .stage textarea:focus{border-color:var(--accent)}
 .vstate{font-size:12px;opacity:.7;white-space:nowrap}
-.card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:pointer;user-select:none;-webkit-user-select:none}
+.card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.card .th{-webkit-user-drag:none}
 .card .th{aspect-ratio:1;background:var(--bg);display:block;width:100%;max-width:100%;object-fit:cover}
 .card.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
 .card .meta{padding:6px 8px;display:flex;gap:6px;align-items:center;font-size:12px}
