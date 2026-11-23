@@ -97,7 +97,8 @@ select.btn{padding-right:8px}
 .stage textarea:focus{border-color:var(--accent)}
 .vstate{font-size:12px;opacity:.7;white-space:nowrap}
 .vstate:empty{display:none}
-.card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:pointer;user-select:none;-webkit-user-select:none}
+.card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.card .th{-webkit-user-drag:none}
 .card .th{aspect-ratio:1;background:var(--bg);display:block;width:100%;max-width:100%;object-fit:cover}
 .card.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
 .card .meta{padding:6px 8px;display:flex;gap:6px;align-items:center;font-size:12px}
