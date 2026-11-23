@@ -569,7 +569,7 @@ function liveObs(){return liveIO||=new IntersectionObserver(es=>{for(const e of 
 function dbxLink(it){return it.link&&Date.now()<it.linkExp?Promise.resolve(it.link):dbx.tempLink(it.id).then(l=>{it.link=l;it.linkExp=Date.now()+3.5*3600e3;return l})}
 function renderSel(){
   const n=st.sel.size;$("selbar").hidden=!(n||st.selecting);$("selN").textContent=n;
-  const tr=st.view==="trash";$("bRestore").hidden=!tr;$("bTrash").textContent=tr?L("ゴミ箱から削除"):L("ゴミ箱へ");
+  const tr=st.view==="trash";$("bRestore").hidden=!tr;{const l=tr?L("ゴミ箱から削除"):L("ゴミ箱へ"),b=$("bTrash");b.title=l;b.setAttribute("aria-label",l)}$("bFav").classList.toggle("on",!!n&&selItems().every(i=>i.favorite));
   ["bFav","bTag","bMove","bLink","bStatus"].forEach(x=>$(x).hidden=tr);
   $("bUnlink").hidden=tr||!st.folder||!selItems().some(i=>i.also?.some(x=>under(x,st.folder)));
   if(dbxMode){$("bMove").hidden=true;$("bTrash").hidden=tr}else $("bTrash").hidden=false;
