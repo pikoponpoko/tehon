@@ -534,6 +534,11 @@ export async function removeBatch(paths: string[]): Promise<boolean[]> {
   return out;
 }
 
+/** Bring a deleted file back from Dropbox's deleted files. */
+export async function restore(path: string, rev: string): Promise<FileMeta> {
+  return rpc("files/restore", { path, rev });
+}
+
 /** Tags etc. carried over from Eagle, keyed by file path (/.tehon/eagle-manifest.json). Device data overrides it.
  *  Source page URLs are in /.tehon/eagle-sources.json ({ path: url }) and are merged in as `url`. */
 export interface EagleManifest { files: Record<string, { tags: string[]; favorite: boolean; trashed: boolean; addedAt?: number; url?: string }>; urls: Omit<UrlMeta, "updatedAt">[] }

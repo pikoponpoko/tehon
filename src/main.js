@@ -77,7 +77,7 @@ for(let i=0;i<72;i++){
 }else{FOLDERS=[];TAGS.length=0}
 // persisted per-viewer edits while not connected to Dropbox
 const KEY=DEMO?"tehon-demo-v1":"tehon-local-v1";
-try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s){const m=new Map(s.map(x=>[x.id,x]));items.forEach(it=>{const x=m.get(it.id);if(x){it.tags=x.tags;it.favorite=x.favorite;it.folder=x.folder;it.trashed=x.trashed;it.status=x.status??null;if(x.also)it.also=x.also;if(x.text!=null)it.text=x.text}});s.filter(x=>x.extra).forEach(x=>items.push(x))}}catch(e){}
+try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s){const m=new Map(s.map(x=>[x.id,x]));items.forEach(it=>{const x=m.get(it.id);if(x){it.tags=x.tags;it.favorite=x.favorite;it.folder=x.folder;it.trashed=x.trashed;it.trashedAt=x.trashedAt||0;it.status=x.status??null;if(x.also)it.also=x.also;if(x.text!=null)it.text=x.text}});s.filter(x=>x.extra).forEach(x=>items.push(x))}}catch(e){}
 // Archived folders: hidden from the library (and everything under them) but kept as they are.
 const AKEY=DEMO?"tehon-demo-arch":"tehon-local-arch";
 let ARCH=new Set();try{ARCH=new Set(JSON.parse(localStorage.getItem(AKEY)||"[]"))}catch(e){}
@@ -97,7 +97,7 @@ const fsOf=it=>it.also?.length?[it.folder,...it.also]:[it.folder];
 const under=(x,f)=>x===f||x.startsWith(f+"/");
 const inF=(it,f)=>fsOf(it).some(x=>under(x,f));
 const gone=it=>fsOf(it).every(inArch);
-const save=()=>{if(eagleMode)return;if(dbxMode)return dbxSave();try{localStorage.setItem(KEY,JSON.stringify(items.map(it=>it.extra?{...it,blobUrl:null}:{id:it.id,tags:it.tags,favorite:it.favorite,folder:it.folder,trashed:it.trashed,also:it.also?.length?it.also:undefined,status:it.status||undefined,text:it.kind==="text"?it.text:undefined})))}catch(e){}};
+const save=()=>{if(eagleMode)return;if(dbxMode)return dbxSave();try{localStorage.setItem(KEY,JSON.stringify(items.map(it=>it.extra?{...it,blobUrl:null}:{id:it.id,tags:it.tags,favorite:it.favorite,folder:it.folder,trashed:it.trashed,trashedAt:it.trashed&&it.trashedAt||undefined,also:it.also?.length?it.also:undefined,status:it.status||undefined,text:it.kind==="text"?it.text:undefined})))}catch(e){}};
 if(!STATUSES){seedStatuses();if(DEMO)items.forEach((it,i)=>{if(!it.status&&i%5===1)it.status="wip";else if(!it.status&&i%7===3)it.status="done"});try{localStorage.setItem(SKEY,JSON.stringify(STATUSES))}catch(e){}save()}
 
 /* drawing demo artwork */
@@ -262,7 +262,7 @@ function dbxItem(e,m){
   const f=["svg","avif","ico"].includes(ext)?"native":kind==="image"&&!VIEW_EXT.includes(ext)?fmt.fmtOf(ext):null;
   return {id:e.id,name:e.name,folder,kind,dbx:true,size:e.size,hash:e.content_hash,path:e.path_display,rev:e.rev,badge:kind==="image"&&!VIEW_EXT.includes(ext)?ext||"file":null,fmt:f,
     viewable:kind!=="image"||VIEW_EXT.includes(ext)||!!f,thumbable:dbx.THUMB_EXT.includes(ext)||!!f,
-    tags:m?.tags||[],favorite:!!m?.favorite,trashed:!!m?.trashed,url:null,w:d?.width||0,h:d?.height||0,
+    tags:m?.tags||[],favorite:!!m?.favorite,trashed:!!m?.trashed,trashedAt:m?.trashed&&m.updatedAt||0,url:null,w:d?.width||0,h:d?.height||0,
     addedAt:Date.parse(e.client_modified||e.server_modified||"")||0};
 }
 // Last Dropbox listing, shown at startup while the fresh listing loads.
@@ -284,7 +284,7 @@ async function loadDropbox(keep=false){
     const ef=new Map(Object.entries(em?.files||{}).map(([k,v])=>[k.normalize("NFC").toLowerCase(),v]));
     const out=entries.filter(e=>e[".tag"]==="file").map(e=>{const x=ef.get(e.path_lower.normalize("NFC"));const it=dbxItem(e,meta.items[e.id]||x);if(x?.addedAt)it.addedAt=x.addedAt;it.source=meta.sources[e.id]?.url||x?.url||null;return it});
     for(const u of em?.urls||[]){const k="eagle-"+u.addedAt+"-"+u.url;if(!meta.urls[k])meta.urls[k]={...u,updatedAt:0}}
-    for(const [k,u] of Object.entries(meta.urls))if(!u.deleted)out.push({id:"url:"+k,key:k,name:u.name,folder:u.folder,kind:"url",url:u.url,tags:u.tags||[],favorite:!!u.favorite,trashed:!!u.trashed,addedAt:u.addedAt,w:0,h:0,dbx:true});
+    for(const [k,u] of Object.entries(meta.urls))if(!u.deleted)out.push({id:"url:"+k,key:k,name:u.name,folder:u.folder,kind:"url",url:u.url,tags:u.tags||[],favorite:!!u.favorite,trashed:!!u.trashed,trashedAt:u.trashed&&u.updatedAt||0,addedAt:u.addedAt,w:0,h:0,dbx:true});
     for(const it of out){const l=meta.links[it.id]?.folders?.filter(f=>f!==it.folder);if(l?.length)it.also=[...new Set(l)]}
     const oldRev=new Map(items.map(i=>[i.id,i.rev]));
     for(const it of out)if(oldRev.has(it.id)&&oldRev.get(it.id)!==it.rev){thumbCache.delete(it.id);thumbAsked.delete(it.id);previewP.delete(it.id);textMem.delete(it.id);posterMem.delete(it.id);posterP.delete(it.id)}
@@ -374,7 +374,7 @@ function filtered(anyStatus){
   if(anyStatus)return l;
   if(st.sort==="random"){const r=x=>{let h=st.rseed;for(const c of x.id)h=Math.imul(h^c.charCodeAt(0),2654435761);return h>>>0};return l.sort((x,y)=>r(x)-r(y))}
   const [k,d]=st.sort.split("-");
-  l.sort((x,y)=>k==="name"?x.name.localeCompare(y.name,"ja"):k==="kind"?x.kind.localeCompare(y.kind)||y.addedAt-x.addedAt:(d==="asc"?x.addedAt-y.addedAt:y.addedAt-x.addedAt));
+  l.sort((x,y)=>k==="name"?x.name.localeCompare(y.name,"ja"):k==="kind"?x.kind.localeCompare(y.kind)||y.addedAt-x.addedAt:k==="trashed"?(y.trashedAt||0)-(x.trashedAt||0)||y.addedAt-x.addedAt:(d==="asc"?x.addedAt-y.addedAt:y.addedAt-x.addedAt));
   return l;
 }
 // File type for the type filter: unviewable images (PSD, AI…) are split out by extension.
@@ -444,7 +444,8 @@ function editTag(t){
     items.forEach(i=>{if(i.tags.includes(t))i.tags=[...new Set(i.tags.map(z=>z===t?n:z))]});
     if(st.tag===t)st.tag=n;TAGS.splice(0,TAGS.length,...new Set(TAGS.map(z=>z===t?n:z)));save();render();toast(L("「{t}」に変更しました",{t:n}))},
   ()=>{$("fTag").value=t;$("fDel").onclick=()=>{const n=items.filter(i=>i.tags.includes(t)).length;
-    confirmDlg(L("「{t}」を削除",{t}),L("{n} 件から外します。",{n}),()=>{items.forEach(i=>{if(i.tags.includes(t))i.tags=i.tags.filter(z=>z!==t)});if(st.tag===t)st.tag=null;save();render();toast(L("「{t}」を削除しました",{t}))})}});
+    confirmDlg(L("「{t}」を削除",{t}),L("{n} 件から外します。",{n}),()=>{const had=items.filter(i=>i.tags.includes(t)).map(i=>[i,i.tags]);had.forEach(([i])=>i.tags=i.tags.filter(z=>z!==t));if(st.tag===t)st.tag=null;save();render();
+      undoable(L("「{t}」を削除しました",{t}),()=>{had.forEach(([i,g])=>i.tags=g);if(!TAGS.includes(t))TAGS.push(t);save();render()})})}});
 }
 // Right-click (long-press on touch) a folder: archive it, or bring an archived one back.
 function folderDlg(q){const on=ARCH.has(q);
@@ -473,7 +474,7 @@ function editStatus(k){if(k===NONE)return;const x=STATUSES.find(s=>s.id===k);if(
   formDlg(L("ステータスを編集"),`<input id="fSt" required><button type="button" class="btn" id="fDel">${L("削除")}</button>`,L("保存"),()=>{
     const n=$("fSt").value.trim();if(!n||n===stName(k))return;x.name=n;putStatuses();render()},
   ()=>{$("fSt").value=stName(k);$("fDel").onclick=()=>{const n=items.filter(i=>stOf(i)===k).length;
-    confirmDlg(L("「{t}」を削除",{t:stName(k)}),L("{n} 件は未指定になります。",{n}),()=>{STATUSES=STATUSES.filter(s=>s!==x);if(st.status===k)st.status=null;putStatuses();render();toast(L("「{t}」を削除しました",{t:x.name}))})}})}
+    confirmDlg(L("「{t}」を削除",{t:stName(k)}),L("{n} 件は未指定になります。",{n}),()=>{const p=STATUSES;STATUSES=STATUSES.filter(s=>s!==x);if(st.status===k)st.status=null;putStatuses();render();undoable(L("「{t}」を削除しました",{t:x.name}),()=>{STATUSES=p;putStatuses();render()})})}})}
 // Re-rendering the same view (after a delete, move, tag or status change, a sync…) keeps the scroll position;
 // changing the view, folder, filter or sort starts from the top.
 let gridKey;
@@ -575,7 +576,13 @@ function renderSel(){
   if(dbxMode){$("bMove").hidden=true;$("bTrash").hidden=tr}else $("bTrash").hidden=false;
   $("selBtn").textContent=st.selecting?L("完了"):L("選択");
 }
-function render(){renderSide();renderGrid();renderSel()}
+// The trash has its own sort, 削除日 (newest first) by default; leaving it brings back the list's sort.
+let sortIn=null;
+function syncSort(){const tr=st.view==="trash",o=$("sort").querySelector('[value="trashed-desc"]');if(tr===(sortIn==="trash"))return;
+  [st.sort,st.otherSort]=[st.otherSort||(tr?"trashed-desc":"added-desc"),st.sort];sortIn=tr?"trash":"list";
+  if(tr&&!o){const n=document.createElement("option");n.value="trashed-desc";n.textContent=L("削除日（新しい順）");$("sort").prepend(n)}else if(!tr)o?.remove();
+  $("sort").value=st.sort;$("shuffle").hidden=st.sort!=="random"}
+function render(){syncSort();renderSide();renderGrid();renderSel()}
 // Selection changes only repaint the cards already on screen, so the list keeps its scroll position.
 function paintSel(){const g=$("grid");g.classList.toggle("selecting",st.selecting||st.sel.size>0);
   g.querySelectorAll(".card").forEach(c=>c.classList.toggle("sel",st.sel.has(list[+c.dataset.i]?.id)));renderSel()}
@@ -613,8 +620,8 @@ function useFocus(){if(st.sel.size)return true;const i=curIdx();if(i==null)retur
 function dropImp(){if(!st.imp)return;st.imp=false;st.sel.clear();renderGrid();renderSel();if(st.anchor!=null)focusCard(st.anchor)}
 function rangeTo(i){if(st.anchor==null)st.anchor=curIdx()??i;st.sel.clear();const a=Math.min(st.anchor,i),b=Math.max(st.anchor,i);for(let k=a;k<=b;k++)st.sel.add(list[k].id);paintSel();focusCard(i)}
 function keysDlg(){const m=MAC?"⌘":"Ctrl";
-  const K=[[L("一覧"),[["← → ↑ ↓",L("移動")],["Shift + ← → ↑ ↓",L("範囲選択")],["Home / End",L("先頭 / 末尾")],["Enter",L("開く")],["Space",L("選択")],[m+" + A",L("すべて選択")],["Esc",L("選択解除")],["F",L("お気に入り")],["T",L("タグを追加")],["M",L("移動")],["Delete",L("ゴミ箱へ")],["/ , "+m+" + F",L("検索")],["N",L("追加")],["+ / -",L("列数")],["1〜9 / 0",L("列数を指定 / 自動")],["S",L("サイドバー")],["G",L("グリッド / ウォーターフォール")],["K",L("カンバン")]]],
-    [L("ビューア"),[["← →",L("前 / 次")],["+ / - / 0",L("拡大 / 縮小 / 全体")],[m+" + "+L("ホイール"),L("拡大 / 縮小")],["1","100%"],["↑ ↓",L("前 / 次のページ")],["Space",L("再生 / 停止")],["F",L("お気に入り")],["T",L("タグ")],["Delete",L("ゴミ箱へ")],["Esc",L("閉じる")]]]];
+  const K=[[L("一覧"),[["← → ↑ ↓",L("移動")],["Shift + ← → ↑ ↓",L("範囲選択")],["Home / End",L("先頭 / 末尾")],["Enter",L("開く")],["Space",L("選択")],[m+" + A",L("すべて選択")],["Esc",L("選択解除")],["F",L("お気に入り")],["T",L("タグを追加")],["M",L("移動")],["Delete",L("ゴミ箱へ")],[m+" + Z",L("取り消す")],["/ , "+m+" + F",L("検索")],["N",L("追加")],["+ / -",L("列数")],["1〜9 / 0",L("列数を指定 / 自動")],["S",L("サイドバー")],["G",L("グリッド / ウォーターフォール")],["K",L("カンバン")]]],
+    [L("ビューア"),[["← →",L("前 / 次")],["+ / - / 0",L("拡大 / 縮小 / 全体")],[m+" + "+L("ホイール"),L("拡大 / 縮小")],["1","100%"],["↑ ↓",L("前 / 次のページ")],["Space",L("再生 / 停止")],["F",L("お気に入り")],["T",L("タグ")],["Delete",L("ゴミ箱へ")],[m+" + Z",L("取り消す")],["Esc",L("閉じる")]]]];
   formDlg(L("キーボードショートカット"),K.map(([h,r])=>`<div class="keys"><b>${h}</b>${r.map(([k,l])=>`<span>${l}</span><kbd>${esc(k)}</kbd>`).join("")}</div>`).join(""),L("閉じる"),()=>{},()=>{$("dCancel").hidden=true;$("dlgForm").querySelector(".pri").focus()})}
 document.addEventListener("keydown",e=>{
   if(!$("viewer").hidden||!$("dlg").hidden||e.altKey||e.isComposing)return;
@@ -623,6 +630,7 @@ document.addEventListener("keydown",e=>{
   if(mod){
     if(k==="a"){e.preventDefault();list.forEach(x=>st.sel.add(x.id));paintSel();if(i!=null)focusCard(i)}
     if(k==="f"){e.preventDefault();$("q").focus();$("q").select()}
+    if(k==="z"&&!e.shiftKey){e.preventDefault();undo()}
     return}
   const mv={ArrowRight:1,ArrowLeft:-1}[k];
   if(mv||k==="ArrowUp"||k==="ArrowDown"){e.preventDefault();
@@ -682,10 +690,17 @@ const selItems=()=>items.filter(i=>st.sel.has(i.id));
 $("bFav").onclick=()=>{const s=selItems();const v=!s.every(i=>i.favorite);s.forEach(i=>i.favorite=v);save();render();toast(v?L("お気に入りに追加しました"):L("お気に入りを解除しました"))};
 function trashSel(){
   const s=selItems();
-  if(st.view==="trash"){confirmDlg(L("{n} 件をゴミ箱から削除",{n:s.length}),L("Dropboxでは「削除済みファイル」から一定期間復元できます。"),()=>{items=items.filter(i=>!st.sel.has(i.id));st.sel.clear();save();render();toast(L("削除しました"))});return}
-  s.forEach(i=>i.trashed=true);st.sel.clear();save();render();toast(L("{n} 件をゴミ箱へ移動しました",{n:s.length}));
+  if(st.view==="trash"){confirmDlg(L("{n} 件をゴミ箱から削除",{n:s.length}),L("Dropboxでは「削除済みファイル」から一定期間復元できます。"),()=>{const u=unremove(s);items=items.filter(i=>!st.sel.has(i.id));st.sel.clear();save();render();undoable(L("削除しました"),()=>{u();render()})});return}
+  const u=untrash(s);s.forEach(i=>{i.trashed=true;i.trashedAt=Date.now()});st.sel.clear();save();render();undoable(L("{n} 件をゴミ箱へ移動しました",{n:s.length}),()=>{u();render()});
 }
 $("bTrash").onclick=trashSel;
+// Undo: each delete leaves a function that puts things back. The toast offers it, and Ctrl/⌘+Z takes the latest one.
+const undos=[];
+function undoable(m,fn){const f=async()=>{const k=undos.indexOf(f);if(k<0)return;undos.splice(k,1);$("toast").hidden=true;await fn()};undos.push(f);if(undos.length>20)undos.shift();toast(m,f)}
+function undo(){const f=undos[undos.length-1];if(f)f()}
+// Put back the trash state, or the items themselves, as they were before.
+function untrash(s){const p=s.map(i=>[i,i.trashed,i.trashedAt]);return()=>{p.forEach(([i,a,b])=>{i.trashed=a;i.trashedAt=b});save()}}
+function unremove(s){const p=s.map(i=>[i,items.indexOf(i)]).sort((a,b)=>a[1]-b[1]);return skip=>{p.forEach(([i,k])=>{if(!skip?.has(i)&&!items.includes(i))items.splice(Math.min(k,items.length),0,i)});save()}}
 // Delete duplicates: each group's first item stays and takes over the others' folders (as links), tags, favorite, status
 // and source page; the others go to Dropbox's deleted files (URLs are marked deleted).
 $("bDup").onclick=()=>{const gs=dupGroups(),n=gs.reduce((k,g)=>k+g.length-1,0);if(!n)return;
@@ -693,14 +708,26 @@ $("bDup").onclick=()=>{const gs=dupGroups(),n=gs.reduce((k,g)=>k+g.length-1,0);i
     toast(L("削除中"));const files=gs.flatMap(g=>g.slice(1)).filter(i=>i.kind!=="url"&&i.dbx);
     let ok=new Set();
     try{const r=dbxMode&&files.length?await dbx.removeBatch(files.map(i=>i.id)):[];files.forEach((i,k)=>r[k]&&ok.add(i.id))}catch(e){toast(L("削除できませんでした"));return}
-    const t=Date.now(),del=new Set();
+    const t=Date.now(),del=new Set(),gone=items.filter(i=>ok.has(i.id)||i.kind==="url"&&gs.some(g=>g.indexOf(i)>0));
+    const kept=gs.map(([a])=>[a,{tags:a.tags,favorite:a.favorite,trashed:a.trashed,also:a.also,status:a.status,source:a.source,src:own?.sources?.[a.id]}]);
+    const urlWas=new Map(gone.filter(i=>i.kind==="url").map(b=>[b,own?.urls[b.key]])),back=unremove(gone);
     for(const [a,...rest] of gs)for(const b of rest){if(b.kind==="url"){if(dbxMode&&own)own.urls[b.key]={...metaOf(b),deleted:true,updatedAt:t}}else if(!ok.has(b.id))continue;
       del.add(b.id);a.tags=[...new Set([...a.tags,...b.tags])];a.favorite||=b.favorite;a.trashed&&=b.trashed;
       const fs=[...new Set([...(a.also||[]),...fsOf(b)])].filter(f=>f!==a.folder);if(fs.length)a.also=fs;
       if(!a.status&&b.status)putStatus([a],b.status);
       if(!a.source&&b.source){a.source=b.source;if(dbxMode&&own&&a.kind!=="url")(own.sources||={})[a.id]={url:b.source,updatedAt:t}}}
     items=items.filter(i=>!del.has(i.id));save();if(dbxMode){saveCache();await flushSave()}render();
-    toast(del.size<n?L("{n} 件を削除しました（{m} 件は削除できませんでした）",{n:del.size,m:n-del.size}):L("{n} 件を削除しました",{n:del.size}))})};
+    undoable(del.size<n?L("{n} 件を削除しました（{m} 件は削除できませんでした）",{n:del.size,m:n-del.size}):L("{n} 件を削除しました",{n:del.size}),()=>undoDup(gone,kept,urlWas,back))})};
+// Undo 重複の削除: files come back from Dropbox's deleted files (same rev), and the kept items lose what they took over.
+async function undoDup(gone,kept,urlWas,back){toast(L("復元中"));const t=Date.now(),bad=new Set();
+  await Promise.all(gone.filter(i=>i.kind!=="url"&&i.dbx).map(async i=>{try{const m=await dbx.restore(i.path,i.rev);
+    if(m?.id&&m.id!==i.id&&own){for(const k of["items","sources","links","status"])if(own[k]?.[i.id])own[k][m.id]={...own[k][i.id],updatedAt:t};i.id=m.id}}catch(e){bad.add(i)}}));
+  if(dbxMode&&own)for(const [b,w] of urlWas)own.urls[b.key]=w?{...w,updatedAt:t}:{...metaOf(b),updatedAt:t};
+  for(const [a,x] of kept){a.tags=x.tags;a.favorite=x.favorite;a.trashed=x.trashed;if(x.also)a.also=x.also;else delete a.also;a.source=x.source;
+    if(dbxMode&&own&&a.kind!=="url"){if(x.src)own.sources[a.id]={...x.src,updatedAt:t};else if(own.sources?.[a.id])delete own.sources[a.id]}
+    if((a.status||null)!==(x.status||null))putStatus([a],x.status||NONE)}
+  back(bad);save();if(dbxMode){saveCache();await flushSave()}render();const n=gone.length-bad.size;
+  toast(L("{n} 件を元に戻しました",{n})+(bad.size?L("（{m} 件は復元できませんでした）",{m:bad.size}):""))}
 $("bRestore").onclick=()=>{const s=selItems();s.forEach(i=>i.trashed=false);st.sel.clear();save();render();toast(L("{n} 件を元に戻しました",{n:s.length}))};
 $("bTag").onclick=()=>{const s=selItems();const cur=[...new Set(s.flatMap(i=>i.tags))].sort((a,b)=>a.localeCompare(b,"ja"));
   formDlg(L("タグ"),`<input id="fTag" list="tagList" placeholder="${L("タグ名")}"><datalist id="tagList">${TAGS.map(t=>`<option value="${esc(t)}">`).join("")}</datalist><div class="tags" id="fCur"></div>`,L("追加"),()=>{const t=$("fTag").value.trim();if(!t)return;s.forEach(i=>{if(!i.tags.includes(t))i.tags.push(t)});save();render();toast(L("「{t}」を追加しました",{t}))},
@@ -924,7 +951,10 @@ function formDlg(title,html,ok,fn,init){
 }
 function confirmDlg(title,msg,fn){formDlg(title,`<div class="msg" style="color:var(--muted);font-size:13px"></div>`,L("削除"),fn);$("dlgForm").querySelector(".msg").textContent=msg}
 $("dlg").addEventListener("keydown",e=>{if(e.key==="Escape"){$("dlg").hidden=true;dropImp()}});
-let tt;function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,2400)}
+let tt;function toast(m,undoFn){const t=$("toast");t.textContent=m;
+  if(undoFn){const b=document.createElement("button");b.textContent=L("取り消す");b.title=(navigator.platform.includes("Mac")?"⌘":"Ctrl")+" + Z";b.onclick=undoFn;t.append(b)}
+  const f=!$("viewer").hidden&&$("vfoot").getBoundingClientRect();t.style.bottom=f&&f.height?innerHeight-f.top+8+"px":"";
+  t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,undoFn?6000:2400)}
 
 /* viewer */
 const V={i:0,z:1,x:0,y:0,fit:1,raf:0,play:true,img:null,video:null};
@@ -1151,10 +1181,11 @@ vt.addEventListener("touchend",e=>{const s=vtSw;vtSw=null;if(!s||e.touches.lengt
 // Delete in the viewer works like the list's: to the trash, or from the trash after a confirm. Then the next item opens.
 function vTrash(){const it=list[V.i];if(!it)return;
   const drop=()=>{list.splice(V.i,1);if(!list.length)return closeViewer();V.i=Math.min(V.i,list.length-1);loadV()};
-  if(it.trashed){if(st.view!=="trash")return;confirmDlg(L("{n} 件をゴミ箱から削除",{n:1}),L("Dropboxでは「削除済みファイル」から一定期間復元できます。"),()=>{items=items.filter(i=>i!==it);st.sel.delete(it.id);save();renderSide();toast(L("削除しました"));drop()});return}
-  it.trashed=true;st.sel.delete(it.id);save();renderSide();toast(L("ゴミ箱へ移動しました"));drop()}
+  const at=V.i,back=u=>()=>{u();if($("viewer").hidden)return render();list.splice(Math.min(at,list.length),0,it);V.i=list.indexOf(it);renderSide();loadV()};
+  if(it.trashed){if(st.view!=="trash")return;confirmDlg(L("{n} 件をゴミ箱から削除",{n:1}),L("Dropboxでは「削除済みファイル」から一定期間復元できます。"),()=>{const u=unremove([it]);items=items.filter(i=>i!==it);st.sel.delete(it.id);save();renderSide();undoable(L("削除しました"),back(u));drop()});return}
+  const u=untrash([it]);it.trashed=true;it.trashedAt=Date.now();st.sel.delete(it.id);save();renderSide();undoable(L("ゴミ箱へ移動しました"),back(u));drop()}
 $("vDel").onclick=vTrash;
-document.addEventListener("keydown",e=>{if($("viewer").hidden||!$("dlg").hidden||e.target.id==="vTagInput")return;if(e.altKey||((e.metaKey||e.ctrlKey)&&e.target!==vt))return;if(e.target===vt){if(e.key==="Escape")vt.blur();const c=vt.selectionStart;if(!e.shiftKey&&!e.metaKey&&!e.ctrlKey&&c===vt.selectionEnd&&(e.key==="ArrowLeft"&&c===0||e.key==="ArrowRight"&&c===vt.value.length)){e.preventDefault();vt.blur();go(e.key==="ArrowRight"?1:-1);return}if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();vt.oninput()}return}
+document.addEventListener("keydown",e=>{if($("viewer").hidden||!$("dlg").hidden||e.target.id==="vTagInput")return;if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==="z"&&e.target!==vt){e.preventDefault();return undo()}if(e.altKey||((e.metaKey||e.ctrlKey)&&e.target!==vt))return;if(e.target===vt){if(e.key==="Escape")vt.blur();const c=vt.selectionStart;if(!e.shiftKey&&!e.metaKey&&!e.ctrlKey&&c===vt.selectionEnd&&(e.key==="ArrowLeft"&&c===0||e.key==="ArrowRight"&&c===vt.value.length)){e.preventDefault();vt.blur();go(e.key==="ArrowRight"?1:-1);return}if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();vt.oninput()}return}
   ({Escape:closeViewer,ArrowLeft:()=>$("vPrev").click(),ArrowRight:()=>$("vNext").click(),"+":()=>zoomAt(1.25),"=":()=>zoomAt(1.25),"-":()=>zoomAt(.8),"0":fitV,"1":()=>{if(V.el&&V.el!==vf){V.z=1;V.x=0;V.y=0;applyV()}},ArrowUp:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p-1)}},ArrowDown:()=>{if(V.doc){e.preventDefault();showPage(V.doc.p+1)}},PageUp:()=>V.doc&&showPage(V.doc.p-1),PageDown:()=>V.doc&&showPage(V.doc.p+1),Delete:vTrash,Backspace:vTrash,f:()=>$("vFav").click()," ":()=>$("vPlay").click(),t:()=>{e.preventDefault();$("vTagInput").focus()}}[e.key]||(()=>{}))()});
 addEventListener("resize",()=>{if(!$("viewer").hidden)fitV()});
 
