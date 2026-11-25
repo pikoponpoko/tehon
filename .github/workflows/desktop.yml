@@ -2,9 +2,8 @@
 # and publishes them as Release v<version>. Other pushes touching the app only build them (Actions artifacts).
 name: Desktop
 
+# PR/push では動かさない（Actions の分数節約）。必要なときだけ手動実行する。
 on:
-  push:
-    paths: ["desktop/**", "src/**", "public/**", "index.html", "package.json", "package-lock.json", ".github/workflows/desktop.yml"]
   workflow_dispatch:
 
 permissions:
